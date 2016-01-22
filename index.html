@@ -7,6 +7,7 @@
   <title>Deep Belief in Javascript</title>
   <script type="text/javascript" src="JavascriptLibrary/Utils/modernizr.js"></script>
 
+  <script type="text/javascript" src="../weblas/dist/weblas.js"></script>
   <link rel="stylesheet" type="text/css" href="JavascriptLibrary/CSS/bootstrap-2.3.1.min.css" />
   <link rel="stylesheet" type="text/css" href="JavascriptLibrary/CSS/bootstrap-responsive-2.3.1.min.css" />
   <link rel="stylesheet" type="text/css" href="JavascriptLibrary/CSS/flat-ui.css" />
@@ -78,10 +79,24 @@
   <script type="text/javascript" src="JavascriptLibrary/Utils/glMatrix.js"></script>
   <script type="text/javascript" src="JavascriptLibrary/Utils/webgl.js"></script>
   <script type="text/javascript" src="JavascriptLibrary/jpcnn.js"></script>
-
+		<script>
+		// First, checks if it isn't implemented yet.
+		if (!String.prototype.format) {
+		  String.prototype.format = function() {
+		    var args = arguments;
+		    return this.replace(/{(\d+)}/g, function(match, number) {
+		      return typeof args[number] != 'undefined'
+		        ? args[number]
+		        : match
+		      ;
+		    });
+		  };
+		}
+		</script>
     <script type="text/javascript">
 var g_isWebcamOn = false;
 var g_wantDemo = true;
+var g_repeat = true;
 var g_network;
 var g_video;
 var g_demoPhotoUrls = [
@@ -146,7 +161,7 @@ function toggleWebGL() {
 }
 
 function startDemoClassification() {
-  if (g_wantDemo) {
+  if (g_wantDemo && g_repeat) {
     g_currentImage = undefined;
     $('.vote-tag-container').hide();
     _.delay(startDemoClassification, 5000);
@@ -420,7 +435,7 @@ function checkCompatibility() {
   if (g_hasWebGL) {
     // Some strange WebGL issues have cropped up on Firefox, so disable it by default for now
     if (!$.browser.mozilla) {
-      setWebGLEnabled(true);
+      //setWebGLEnabled(true);
     }
 
     var maxTextureSize = getMaxTextureSize();

@@ -849,10 +849,12 @@ ConvNode.prototype.run = function(input) {
     inputWithMargin = matrixInsertMargin(input, this._marginSize, this._marginSize);
   }
 
-  this._output = matrixCorrelate(inputWithMargin, this._kernels, this._kernelWidth, this._kernelCount, this._sampleStride);
+  this._output = matrixCorrelate(inputWithMargin, this._kernels, this._kernelWidth, this._kernelCount, this._sampleStride, this._bias);
   this._output.setName(this._name);
 
-  matrixAddInplace(this._output, this._bias, 1.0);
+  if(typeof(this._output._texture) == "undefined"){
+      matrixAddInplace(this._output, this._bias, 1.0);
+  }
 
   return this._output;
 };
@@ -983,15 +985,21 @@ NeuronNode.prototype.run = function(input) {
   var expectedWeightsDimensions = new Dimensions(elementCount, this._outputsCount);
   console.assert(expectedWeightsDimensions.areEqualTo(this._weights._dims));
 
-  this._output = matrixDot(flattenedInput, this._weights);
+  // interesting note: removing the dropout term here appears to increase both
+  // certainty and *accuracy*
+  this._output = matrixDot(flattenedInput, this._weights, this._bias, this._dropout);
   this._output.setName(this._name);
 
-  matrixAddInplace(this._output, this._bias, 1.0);
+  if(typeof(this._output._texture) == "undefined"){
+    matrixAddInplace(this._output, this._bias, 1.0);
 
-  if (this._dropout > 0.0) {
-    var scale = (1.0 - this._dropout);
-    matrixScaleInplace(this._output, scale);
+    /*
+    if (this._dropout > 0.0) {
+      var scale = (1.0 - this._dropout);
+      matrixScaleInplace(this._output, scale);
+    }*/
   }
+
 
   return this._output;
 };
@@ -1363,7 +1371,9 @@ function patchesIntoRows(input, kernelWidth, stride) {
   return output;
 }
 
-function matrixCorrelate(input, kernels, kernelWidth, kernelCount, stride) {
+function matrixCorrelate(input, kernels, kernelWidth, kernelCount, stride, bias) {
+
+  console.log("Correlate");
 
   var inputDims = input._dims;
   // We're expecting (# of images, height, width, # of channels)
@@ -1394,7 +1404,7 @@ function matrixCorrelate(input, kernels, kernelWidth, kernelCount, stride) {
   var lda = m;
   var ldb = k;
   var ldc = m;
-  var beta = 0.0;
+  var beta = 1.0;
 
   if (kernels._bitsPerFloat === 32) {
     output = matrixGemm(
@@ -1422,10 +1432,21 @@ function matrixCorrelate(input, kernels, kernelWidth, kernelCount, stride) {
       ldb,
       beta,
       output,
-      ldc
+      ldc,
+      null,
+      null,
+      null,
+      bias,
+      1.0
     );
+
+    output._data = new Float32Array(weblas.gpu.gl.readData(n, m));
   }
   output.reshape(outputDims);
+
+  if(typeof(patches._texture) != "undefined"){
+      weblas.gpu.gl.context.deleteTexture(patches._texture);
+  }
 
   return output;
 }
@@ -1445,7 +1466,8 @@ function matrixGemm(
   cBuffer,
   ldc) {
 
-  if (g_useWebGL) {
+  if (g_useWebGL){
+
     return glGemm(
       m,
       n,
@@ -1526,10 +1548,53 @@ function matrixGemmScaleA(
   ldc,
   aScale,
   aOffset,
-  aBitDepth) {
+  aBitDepth,
+  bias,
+  scale) {
 
+  //console.log(aBuffer);
+  //console.log(bBuffer);
   if (g_useWebGL) {
-    return glGemm(
+
+      /*
+    var aScale,
+        aBitDepth = aBuffer._bitsPerFloat;
+    if ((aBitDepth === 32) || (aBitDepth === 16)) {
+        aScale = aBuffer._spread;
+    } else {
+    var levels = ((1 << aBitDepth) - 1);
+        aScale = (aBuffer._spread * levels);
+    }
+
+    //console.log("spread: {0}, min: {1}, bitsPerFloat: {2}".format(aBuffer._spread, aBuffer._min, aBuffer._bitsPerFloat));
+    //console.log("M: {0}, N: {1}, K: {2}".format(m, n, k));
+    //console.log(aBuffer);
+
+    // var zeros = new Float32Array(m * n);
+    // zeros.fill(0.0);
+    // console.log("B all zero: " + weblas.test.allclose(bBuffer._data, zeros).result);
+    // console.log("C all zero: " + weblas.test.allclose(cBuffer._data, zeros).result);
+
+
+    var inA;
+    //console.log("bit depth: " + aBuffer._bitsPerFloat);
+
+    if (aBuffer._bitsPerFloat === 32) {
+      inA = aBuffer._data;
+    } else {
+      inA = new Float32Array(aBuffer._quantizedData);
+    }
+    //var A = weblas.saxpy(m * k, aScale, inA, aBuffer._min);
+    var A = inA;
+
+    // naiveGemm uses column major ordering, this can be emulated by
+    // swapping A and B (and m and n) and taking the transpose of the result
+    var result = weblas.sgemm(m, n, k, alpha, A, bBuffer._data, beta, cBuffer._data);
+
+    var C = new Buffer([n, m], result);
+    */
+
+    var expectedC = glGemm(
       m,
       n,
       k,
@@ -1545,8 +1610,49 @@ function matrixGemmScaleA(
       aBuffer._min,
       aBuffer._bitsPerFloat
     );
+
+    // console.log("C  : " + C._data.slice(0, 10));
+    // console.log("C_e: " + expectedC._data.slice(0, 10));
+
+    return expectedC;
+
   } else {
-    return naiveGemmScaleA(
+      /*
+      console.log("javascript");
+
+    var aScale,
+        aBitDepth = aBuffer._bitsPerFloat;
+    if ((aBitDepth === 32) || (aBitDepth === 16)) {
+        aScale = aBuffer._spread;
+    } else {
+        var levels = ((1 << aBitDepth) - 1);
+        aScale = (aBuffer._spread * levels);
+    }
+
+     // var A = new Float32Array(aBuffer._quantizedData);
+
+
+      console.log(A);
+      console.log(aBuffer._quantizedData);
+      */
+      /*
+      if (aBuffer._bitsPerFloat === 32) {
+        inA = aBuffer._data;
+      } else {
+        inA = new Float32Array(aBuffer._quantizedData);
+      }
+      var A = weblas.sscal(m, k, aBuffer._spread, inA, aBuffer._min);
+      //var A = weblas.saxpy(m * k, aBuffer._spread, inA, aBuffer._min);
+
+      // naiveGemm uses column major ordering, this can be emulated by
+      // swapping A and B (and m and n) and taking the transpose of the result
+      var result = weblas.sgemm(n, m, k, alpha, bBuffer._data, A, beta, cBuffer._data);
+      */
+
+      return sgemm(n, m, k, scale, bBuffer, aBuffer, scale, bias);
+
+/*
+      var expectedC =  naiveGemmScaleA(
       m,
       n,
       k,
@@ -1561,8 +1667,115 @@ function matrixGemmScaleA(
       aBuffer._spread,
       aBuffer._min
     );
+
+
+    console.log("C  : " + C._data.slice(0, 10));
+    console.log("C_e: " + expectedC._data.slice(0, 10));
+
+    return expectedC;
+    */
   }
 
+}
+/* sgemm wrapper function for Deep Belief buffers, calls directly into
+    webgl level texture code
+
+    A - a Buffer
+    B - a Buffer
+    C - a Buffer
+*/
+function sgemm(M, N, K, alpha, A, B, beta, C){
+
+	if(C != null && C._data.length != N){
+		throw new Error("Only vector C with length matching columns in B is currently supported.");
+	}
+
+    var gl = weblas.gpu.gl,
+        sgemmcalculator = weblas.gpu.sgemm;
+
+    // pack each matrix into a single RGBA texel array, with the second transposed
+    var texels0,
+        texels1;
+
+    var texture0,
+        texture1,
+        texture2;
+
+    // create input textures from data
+
+    // cached texture for A?
+    if(typeof(A._texture) === "undefined"){
+        // nope, create and cache it
+
+        if (A._bitsPerFloat === 32) {
+          texels0 = A._data;
+        } else {
+            console.log("scaling A");
+            texels0 = new Float32Array(A._quantizedData);
+            texels0 = weblas.sscal(M, K, A._spread, texels0, A._min);
+        }
+
+        A._texture = gl.createDataTexture(M, K, texels0);
+    }
+
+    // cached texture for transpose of B?
+    if(typeof(B._Ttexture) === "undefined"){
+        // nope, create and cache it
+
+        if (B._bitsPerFloat === 32) {
+          texels1 = tranpose(K, N, B._data);
+          B._Ttexture = gl.createDataTexture(N, K, texels1);
+        } else {
+            // pipeline sscal for tranpose of B
+            texels1 = transpose(K, N, new Float32Array(B._quantizedData));
+
+            var textureB = gl.createDataTexture(N, K, texels1);
+
+            B._Ttexture = gl.createDataTexture(N, K, null);
+            weblas.gpu.sscal(N, K, B._spread, textureB, B._min, B._Ttexture);
+            gl.context.deleteTexture(textureB);
+
+        };
+
+    }
+
+    // cached texture for transpose C?
+    if(typeof(C._texture) === "undefined"){
+        C._texture = gl.createDataTexture(1, N, C._data);
+    }
+
+    texture0 = A._texture;
+    texture1 = B._Ttexture;
+    texture2 = C._texture;
+
+    var texture3 = gl.createOutputTexture(M, N);
+
+    sgemmcalculator.calculate(M, N, K, alpha, texture0, texture1, beta, texture2, texture3);
+
+    // retrieve data
+    //rawBuffer = gl.readData(M, N);
+
+    // clean up
+    //gl.context.deleteTexture(texture3);
+
+    var out = new Buffer([M, N]);
+    out._texture = texture3;
+    return out;
+
+}
+
+// tranpose a typed array in row major order, with the given row and column
+// numers
+function transpose(r, c, typedArray){
+	var result = new typedArray.constructor(r*c);
+
+	for(var i = 0; i < r; i++){
+		for(var j = 0; j < c; j++){
+			result[j * r + i] = typedArray[i * c + j];
+		}
+	}
+
+	return result;
 }
 
 function naiveGemmScaleA(
@@ -1664,7 +1877,9 @@ function matrixJoinChannels(inputs) {
   return output;
 }
 
-function matrixDot(input, weights) {
+function matrixDot(input, weights, bias, dropout) {
+
+  console.log("Dot");
 
   var inputDims = input._dims;
   // We're expecting (# of images, # of values)
@@ -1682,6 +1897,15 @@ function matrixDot(input, weights) {
   var outputDims = new Dimensions(imageCount, outputChannels);
   var output = new Buffer(outputDims);
 
+  var scale;
+
+  if (dropout > 0.0) {
+    scale = (1.0 - dropout);
+  } else {
+    scale = 1.0;
+  }
+
+
   var m = outputChannels;
   var n = inputDims._dims[0];
   var k = inputDims._dims[1];
@@ -1689,7 +1913,7 @@ function matrixDot(input, weights) {
   var lda = m;
   var ldb = k;
   var ldc = m;
-  var beta = 0.0;
+  var beta = 1.0;
 
   if (weights._bitsPerFloat === 32) {
     output = matrixGemm(
@@ -1720,8 +1944,12 @@ function matrixDot(input, weights) {
       ldc,
       weights._spread,
       weights._min,
-      weights._bitsPerFloat
+      weights._bitsPerFloat,
+      bias,
+      scale
     );
+
+    output._data = new Float32Array(weblas.gpu.gl.readData(n, m));
   }
   output.reshape(outputDims);
 
@@ -1811,14 +2039,67 @@ function matrixLocalResponse(input, windowSize, k, alpha, beta) {
   return output;
 }
 
+var downloadNumber = 0;
 function matrixMaxPatch(input, patchWidth, stride) {
   var output;
   if (g_useWebGL) {
     output = glMaxPatch(input, patchWidth, stride);
   } else {
+
+
+  var inputDims = input._dims._dims;
+  var imageCount = inputDims[0];
+
+  console.assert((imageCount === 1), 'Only handles the single-image case');
+
+  var N = inputDims[2], M = inputDims[1], factor = patchWidth, stride = stride, c = inputDims[3];
+  X = input._data;
+
+  var outputData = weblas.sdwns(M, N, c, factor, stride, X);
+
+  var N_out = Math.floor((N - factor) / stride) + 1;
+  var M_out = Math.floor((M - factor) / stride) + 1;
+
+  //var outputDims = new Dimensions(imageCount, outputHeight , outputWidth, outputChannels);
+  var outputDims = new Dimensions(imageCount, M_out , N_out, c);
+
+  //var outputGPUDims = new Dimensions(outputHeight, outputGPUWidth, 4);
+  var outputGPUDims = new Dimensions(M_out, N_out * c / 4, 4);
+
+  var output = new Buffer(outputGPUDims, outputData);
+  output.reshape(outputDims);
+
+  /*
+    //showArray(input._data, "input");
+    //downloadData(input, "input", downloadNumber.toString());
     output = naiveMaxPatch(input, patchWidth, stride);
+    //downloadData(output, "output", downloadNumber.toString());
+    //downloadNumber++;
+    */
+    //download(arrayToString(output._data), "output."+output._name+output._dims, "text/plain");
+    //showArray(output._data, "output");
+
   }
   return output;
+}
+function arrayToString(typedArray){
+    return "["+typedArray.toString()+"]";
+}
+function downloadData(typedArray, prefix, id){
+    download(arrayToString(typedArray._data), id+"."+prefix+"."+typedArray._name+"."+typedArray._dims, "text/plain");
+}
+function download(text, name, type) {
+    var a = document.createElement("a");
+    var file = new Blob([text], {type: type});
+    a.href = URL.createObjectURL(file);
+    a.download = name;
+    a.click();
+}
+
+function showArray(typedArray, title){
+    //window.open('data:text/csv;charset=utf-8,' + escape(myCsv));
+    var win = window.open('data:text/plain;charset=utf-8,' + "["+typedArray.toString()+"]");
+    win.document.title = title;
 }
 
 function naiveMaxPatch(input, patchWidth, stride) {
@@ -1871,7 +2152,23 @@ function matrixMax(input, maxValue) {
   if (g_useWebGL) {
     return glMax(input, maxValue);
   } else {
-    return naiveMax(input, maxValue);
+    var inputDims = input._dims._dims;
+
+    var M = inputDims[1], N, C;
+
+    N = inputDims.length >= 3 ? inputDims[2] : 1;
+    C = inputDims.length >= 4 ? inputDims[3] : 1;
+
+
+    if (N === 1) {
+      N = M;
+      M = 1;
+    }
+
+    out =  weblas.sclmp(M, N * C, maxValue, null, input._data);
+
+    return new Buffer(inputDims, out);
+    //return naiveMax(input, maxValue);
   }
 }
 
@@ -2428,12 +2725,12 @@ if (!ArrayBuffer.prototype.slice) {
       end += this.byteLength;
     }
 
-    //The range specified by the `begin` and `end` values is clamped to the 
+    //The range specified by the `begin` and `end` values is clamped to the
     //valid index range for the current array.
     begin = Math.min(Math.max(0, begin), this.byteLength);
     end = Math.min(Math.max(0, end), this.byteLength);
 
-    //If the computed length of the new ArrayBuffer would be negative, it 
+    //If the computed length of the new ArrayBuffer would be negative, it
     //is clamped to zero.
     if (end - begin <= 0) {
       return new ArrayBuffer(0);
@@ -2448,4 +2745,3 @@ if (!ArrayBuffer.prototype.slice) {
     return result;
   };
 }
-
