@@ -854,6 +854,12 @@ ConvNode.prototype.run = function(input) {
 
   if(typeof(this._output._texture) == "undefined"){
       matrixAddInplace(this._output, this._bias, 1.0);
+  } else {
+
+    var N = this._output._texdims._dims[0],
+        M = this._output._texdims._dims[1];
+
+    this._output._data = new Float32Array(weblas.gpu.gl.readData(N, M));
   }
 
   return this._output;
@@ -998,6 +1004,12 @@ NeuronNode.prototype.run = function(input) {
       var scale = (1.0 - this._dropout);
       matrixScaleInplace(this._output, scale);
     }*/
+  } else {
+
+    var N = this._output._texdims._dims[0],
+        M = this._output._texdims._dims[1];
+
+    this._output._data = new Float32Array(weblas.gpu.gl.readData(N, M));
   }
 
 
@@ -1440,7 +1452,6 @@ function matrixCorrelate(input, kernels, kernelWidth, kernelCount, stride, bias)
       1.0
     );
 
-    output._data = new Float32Array(weblas.gpu.gl.readData(n, m));
   }
   output.reshape(outputDims);
 
@@ -1716,6 +1727,7 @@ function sgemm(M, N, K, alpha, A, B, beta, C){
         }
 
         A._texture = gl.createDataTexture(M, K, texels0);
+        A._texdims = new Dimensions([M, K]);
     }
 
     // cached texture for transpose of B?
@@ -1732,6 +1744,7 @@ function sgemm(M, N, K, alpha, A, B, beta, C){
             var textureB = gl.createDataTexture(N, K, texels1);
 
             B._Ttexture = gl.createDataTexture(N, K, null);
+            B._Ttexdims = new Dimensions([N, K]);
             weblas.gpu.sscal(N, K, B._spread, textureB, B._min, B._Ttexture);
             gl.context.deleteTexture(textureB);
 
@@ -1742,6 +1755,7 @@ function sgemm(M, N, K, alpha, A, B, beta, C){
     // cached texture for transpose C?
     if(typeof(C._texture) === "undefined"){
         C._texture = gl.createDataTexture(1, N, C._data);
+        C._texdims = new Dimensions([1, N]);
     }
 
     texture0 = A._texture;
@@ -1760,6 +1774,7 @@ function sgemm(M, N, K, alpha, A, B, beta, C){
 
     var out = new Buffer([M, N]);
     out._texture = texture3;
+    out._texdims = new Dimensions([M, N]);
     return out;
 
 }
@@ -1949,7 +1964,6 @@ function matrixDot(input, weights, bias, dropout) {
       scale
     );
 
-    output._data = new Float32Array(weblas.gpu.gl.readData(n, m));
   }
   output.reshape(outputDims);
 
