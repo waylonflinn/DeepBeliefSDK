@@ -478,6 +478,26 @@ function delayedBufferFromFileAtURL(url, callback) {
   xhr.send();
 }
 
+// extract weblas data from _texture and place it in _data
+function extractDataFromTexture(buffer){
+    var M = buffer._texdims._dims[0],
+        N = buffer._texdims._dims[1],
+        texture3 = buffer._texture,
+        output;
+
+    var out = weblas.gpu.gl.createOutputTexture(M, N);
+
+    // float extraction
+    weblas.gpu.encode(M, N, texture3, out);
+
+    output = new Float32Array(weblas.gpu.gl.readData(M, N));
+
+    weblas.gpu.gl.context.deleteTexture(texture3);
+    weblas.gpu.gl.context.deleteTexture(out);
+
+    return output;
+}
+
 /**
  * @constructor
  */
@@ -836,6 +856,14 @@ function ConvNode(tag) {
 }
 window['ConvNode'] = ConvNode;
 ConvNode.prototype.run = function(input) {
+
+    if(input._texture && typeof(input._data) == "undefined"){
+        input._data = extractDataFromTexture(input);
+        weblas.gpu.gl.deleteTexture(input._texture);
+        delete input._texture;
+        delete input._texdims;
+    }
+
   var inputDims = input._dims;
   var inputChannels = inputDims._dims[inputDims._dims.length - 1];
   var valuesPerKernel = (inputChannels * this._kernelWidth * this._kernelWidth);
@@ -854,21 +882,6 @@ ConvNode.prototype.run = function(input) {
 
   if(typeof(this._output._texture) == "undefined"){
       matrixAddInplace(this._output, this._bias, 1.0);
-  } else {
-
-    var M = this._output._texdims._dims[0],
-        N = this._output._texdims._dims[1],
-        texture3 = this._output._texture;
-
-	var out = weblas.gpu.gl.createOutputTexture(M, N);
-
-	// float extraction
-	weblas.gpu.encode(M, N, texture3, out);
-
-    this._output._data = new Float32Array(weblas.gpu.gl.readData(M, N));
-
-    weblas.gpu.gl.context.deleteTexture(texture3);
-	weblas.gpu.gl.context.deleteTexture(out);
   }
 
   return this._output;
@@ -934,6 +947,13 @@ function GConvNode(tag) {
 }
 window['GConvNode'] = GConvNode;
 GConvNode.prototype.run = function(input) {
+
+    if(input._texture && typeof(input._data) == "undefined"){
+        input._data = extractDataFromTexture(input);
+        weblas.gpu.gl.deleteTexture(input._texture);
+        delete input._texture;
+        delete input._texdims;
+    }
   var inputDims = input._dims;
 
   console.assert(inputDims._dims.length === 4);
@@ -989,11 +1009,19 @@ function NeuronNode(tag) {
 }
 window['NeuronNode'] = NeuronNode;
 NeuronNode.prototype.run = function(input) {
+
+    if(input._texture && typeof(input._data) == "undefined"){
+        input._data = extractDataFromTexture(input);
+        weblas.gpu.gl.deleteTexture(input._texture);
+        delete input._texture;
+        delete input._texdims;
+    }
   var inputDims = input._dims;
   var numberOfImages = inputDims._dims[0];
   var inputImageDims = inputDims.removeDimensions(1);
   var elementCount = inputImageDims.elementCount();
   var flattenedDimensions = new Dimensions(numberOfImages, elementCount);
+
   var flattenedInput = input.view();
   flattenedInput.reshape(flattenedDimensions);
 
@@ -1013,23 +1041,7 @@ NeuronNode.prototype.run = function(input) {
       var scale = (1.0 - this._dropout);
       matrixScaleInplace(this._output, scale);
     }
-  } else {
-
-    var M = this._output._texdims._dims[0],
-        N = this._output._texdims._dims[1],
-        texture3 = this._output._texture;
-
-	var out = weblas.gpu.gl.createOutputTexture(M, N);
-
-	// float extraction
-	weblas.gpu.encode(M, N, texture3, out);
-
-    this._output._data = new Float32Array(weblas.gpu.gl.readData(M, N));
-
-    weblas.gpu.gl.context.deleteTexture(texture3);
-	weblas.gpu.gl.context.deleteTexture(out);
   }
-
 
   return this._output;
 };
@@ -1048,9 +1060,18 @@ function NormalizeNode(tag) {
 }
 window['NormalizeNode'] = NormalizeNode;
 NormalizeNode.prototype.run = function(input) {
+
+    if(input._texture && typeof(input._data) == "undefined"){
+        input._data = extractDataFromTexture(input);
+        weblas.gpu.gl.deleteTexture(input._texture);
+        delete input._texture;
+        delete input._texdims;
+    }
+
   this._output = matrixLocalResponse(input, this._windowSize, this._k, this._alpha, this._beta);
   return this._output;
 };
+
 
 /**
  * @constructor
@@ -1091,6 +1112,14 @@ function MaxNode(tag) {
 }
 window['MaxNode'] = MaxNode;
 MaxNode.prototype.run = function(input) {
+
+    if(input._texture && typeof(input._data) == "undefined"){
+        input._data = extractDataFromTexture(input);
+        weblas.gpu.gl.deleteTexture(input._texture);
+        delete input._texture;
+        delete input._texdims;
+    }
+
   this._output = matrixSoftmax(input);
   return this._output;
 };
@@ -1472,10 +1501,10 @@ function matrixCorrelate(input, kernels, kernelWidth, kernelCount, stride, bias)
 
   }
   output.reshape(outputDims);
-/*
+
   if(typeof(patches._texture) != "undefined"){
       weblas.gpu.gl.context.deleteTexture(patches._texture);
-  }*/
+  }
 
   return output;
 }
@@ -1581,48 +1610,7 @@ function matrixGemmScaleA(
   bias,
   scale) {
 
-    //console.log("matrixGemmScaleA");
-  //console.log(aBuffer);
-  //console.log(bBuffer);
   if (g_useWebGL) {
-
-      /*
-    var aScale,
-        aBitDepth = aBuffer._bitsPerFloat;
-    if ((aBitDepth === 32) || (aBitDepth === 16)) {
-        aScale = aBuffer._spread;
-    } else {
-    var levels = ((1 << aBitDepth) - 1);
-        aScale = (aBuffer._spread * levels);
-    }
-
-    //console.log("spread: {0}, min: {1}, bitsPerFloat: {2}".format(aBuffer._spread, aBuffer._min, aBuffer._bitsPerFloat));
-    //console.log("M: {0}, N: {1}, K: {2}".format(m, n, k));
-    //console.log(aBuffer);
-
-    // var zeros = new Float32Array(m * n);
-    // zeros.fill(0.0);
-    // console.log("B all zero: " + weblas.test.allclose(bBuffer._data, zeros).result);
-    // console.log("C all zero: " + weblas.test.allclose(cBuffer._data, zeros).result);
-
-
-    var inA;
-    //console.log("bit depth: " + aBuffer._bitsPerFloat);
-
-    if (aBuffer._bitsPerFloat === 32) {
-      inA = aBuffer._data;
-    } else {
-      inA = new Float32Array(aBuffer._quantizedData);
-    }
-    //var A = weblas.saxpy(m * k, aScale, inA, aBuffer._min);
-    var A = inA;
-
-    // naiveGemm uses column major ordering, this can be emulated by
-    // swapping A and B (and m and n) and taking the transpose of the result
-    var result = weblas.sgemm(m, n, k, alpha, A, bBuffer._data, beta, cBuffer._data);
-
-    var C = new Buffer([n, m], result);
-    */
 
     var expectedC = glGemm(
       m,
@@ -1641,44 +1629,14 @@ function matrixGemmScaleA(
       aBuffer._bitsPerFloat
     );
 
-    // console.log("C  : " + C._data.slice(0, 10));
-    // console.log("C_e: " + expectedC._data.slice(0, 10));
 
     return expectedC;
 
   } else {
-      /*
-      console.log("javascript");
 
-    var aScale,
-        aBitDepth = aBuffer._bitsPerFloat;
-    if ((aBitDepth === 32) || (aBitDepth === 16)) {
-        aScale = aBuffer._spread;
-    } else {
-        var levels = ((1 << aBitDepth) - 1);
-        aScale = (aBuffer._spread * levels);
-    }
-
-     // var A = new Float32Array(aBuffer._quantizedData);
-
-
-      console.log(A);
-      console.log(aBuffer._quantizedData);
-      */
-      /*
-      if (aBuffer._bitsPerFloat === 32) {
-        inA = aBuffer._data;
-      } else {
-        inA = new Float32Array(aBuffer._quantizedData);
-      }
-      var A = weblas.sscal(m, k, aBuffer._spread, inA, aBuffer._min);
-      //var A = weblas.saxpy(m * k, aBuffer._spread, inA, aBuffer._min);
 
       // naiveGemm uses column major ordering, this can be emulated by
       // swapping A and B (and m and n) and taking the transpose of the result
-      var result = weblas.sgemm(n, m, k, alpha, bBuffer._data, A, beta, cBuffer._data);
-      */
-
       return sgemm(n, m, k, scale, bBuffer, aBuffer, scale, bias);
 
 /*
@@ -1697,10 +1655,6 @@ function matrixGemmScaleA(
       aBuffer._spread,
       aBuffer._min
     );
-
-
-    console.log("C  : " + C._data.slice(0, 10));
-    console.log("C_e: " + expectedC._data.slice(0, 10));
 
     return expectedC;
     */
@@ -1764,6 +1718,7 @@ function sgemm(M, N, K, alpha, A, B, beta, C){
             B._Ttexture = gl.createDataTexture(N, K, null);
             B._Ttexdims = new Dimensions([N, K]);
             weblas.gpu.sscal(N, K, B._spread, textureB, B._min, B._Ttexture);
+
             gl.context.deleteTexture(textureB);
 
         };
@@ -1780,15 +1735,12 @@ function sgemm(M, N, K, alpha, A, B, beta, C){
     texture1 = B._Ttexture;
     texture2 = C._texture;
 
+
     var texture3 = gl.createDataTexture(M, N);
 
+    console.log(M, N, K, alpha, beta);
     weblas.gpu.sgemm(M, N, K, alpha, texture0, texture1, beta, texture2, texture3);
 
-    // retrieve data
-    //rawBuffer = gl.readData(M, N);
-
-    // clean up
-    //gl.context.deleteTexture(texture3);
 
     var out = new Buffer([M, N]);
     out._texture = texture3;
@@ -1983,10 +1935,10 @@ function matrixDot(input, weights, bias, dropout) {
     );
 
   }
-  /*
+
     if(typeof(input._texture) != "undefined"){
         weblas.gpu.gl.context.deleteTexture(input._texture);
-    }*/
+    }
   output.reshape(outputDims);
 
   return output;
@@ -2075,7 +2027,6 @@ function matrixLocalResponse(input, windowSize, k, alpha, beta) {
   return output;
 }
 
-var downloadNumber = 0;
 function matrixMaxPatch(input, patchWidth, stride) {
   var output;
   if (g_useWebGL) {
@@ -2088,22 +2039,44 @@ function matrixMaxPatch(input, patchWidth, stride) {
 
   console.assert((imageCount === 1), 'Only handles the single-image case');
 
-  var N = inputDims[2], M = inputDims[1], factor = patchWidth, stride = stride, c = inputDims[3];
-  X = input._data;
-
-  var outputData = weblas.sdwns(M, N, c, factor, stride, X);
+  var N = inputDims[2],
+      M = inputDims[1],
+      factor = patchWidth,
+      channels = inputDims[3];
 
   var N_out = Math.floor((N - factor) / stride) + 1;
   var M_out = Math.floor((M - factor) / stride) + 1;
 
+  var texture0,
+      texture3;
+
+  var gl = weblas.gpu.gl;
+
+  if(typeof(input._texture) == "undefined"){
+    console.log("creating texture for sdwns.");
+    texture0 = gl.createDataTexture(M, N * channels, input._data);
+  }
+
+  texture3 = gl.createDataTexture(M_out, N_out * channels, null);
+
+  weblas.gpu.sdwns(M, N, channels, factor, stride, texture0, texture3);
+
+  var output = new Buffer(new Dimensions(imageCount, M_out , N_out, channels));
+
+  output._texture = texture3;
+  output._texdims = new Dimensions(M_out, N_out * channels);
+
+  //var outputData = weblas.sdwns(M, N, c, factor, stride, X);
+
+
   //var outputDims = new Dimensions(imageCount, outputHeight , outputWidth, outputChannels);
-  var outputDims = new Dimensions(imageCount, M_out , N_out, c);
+  //var outputDims = new Dimensions(imageCount, M_out , N_out, c);
 
   //var outputGPUDims = new Dimensions(outputHeight, outputGPUWidth, 4);
-  var outputGPUDims = new Dimensions(M_out, N_out * c / 4, 4);
+  //var outputGPUDims = new Dimensions(M_out, N_out * c / 4, 4);
 
-  var output = new Buffer(outputGPUDims, outputData);
-  output.reshape(outputDims);
+  //var output = new Buffer(outputGPUDims, outputData);
+  //output.reshape(outputDims);
 
   /*
     //showArray(input._data, "input");
@@ -2195,16 +2168,36 @@ function matrixMax(input, maxValue) {
     N = inputDims.length >= 3 ? inputDims[2] : 1;
     C = inputDims.length >= 4 ? inputDims[3] : 1;
 
-
     if (N === 1) {
       N = M;
       M = 1;
     }
+    var texture0,
+        texture3;
 
+    var gl = weblas.gpu.gl;
+
+    if(typeof(input._texture) == "undefined"){
+        console.log("creating texture for sclmp.");
+        texture0 = gl.createDataTexture(M, N * C, input._data);
+    }
+
+    texture3 = gl.createDataTexture(M, N * C, null);
+
+    weblas.gpu.sclmp(M, N * C, maxValue, null, texture0, texture3);
+
+    var output = new Buffer(inputDims);
+    output._texture = texture3;
+    output._texdims = new Dimensions([M, N * C]);
+
+    return output;
+
+    /*
     out =  weblas.sclmp(M, N * C, maxValue, null, input._data);
 
     return new Buffer(inputDims, out);
-    //return naiveMax(input, maxValue);
+    */
+
   }
 }
 
