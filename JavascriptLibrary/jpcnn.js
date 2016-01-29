@@ -495,6 +495,9 @@ function extractDataFromTexture(buffer){
     weblas.gpu.gl.context.deleteTexture(texture3);
     weblas.gpu.gl.context.deleteTexture(out);
 
+    delete buffer._texture;
+    delete buffer._texdims;
+
     return output;
 }
 
@@ -857,9 +860,8 @@ function ConvNode(tag) {
 window['ConvNode'] = ConvNode;
 ConvNode.prototype.run = function(input) {
 
-    if(input._texture && typeof(input._data) == "undefined"){
+    if(input._texture && input._data === null){
         input._data = extractDataFromTexture(input);
-        weblas.gpu.gl.deleteTexture(input._texture);
         delete input._texture;
         delete input._texdims;
     }
@@ -880,7 +882,7 @@ ConvNode.prototype.run = function(input) {
   this._output = matrixCorrelate(inputWithMargin, this._kernels, this._kernelWidth, this._kernelCount, this._sampleStride, this._bias);
   this._output.setName(this._name);
 
-  if(typeof(this._output._texture) == "undefined"){
+  if(this._output._texture === void(0)){
       matrixAddInplace(this._output, this._bias, 1.0);
   }
 
@@ -948,9 +950,8 @@ function GConvNode(tag) {
 window['GConvNode'] = GConvNode;
 GConvNode.prototype.run = function(input) {
 
-    if(input._texture && typeof(input._data) == "undefined"){
+    if(input._texture && input._data === null){
         input._data = extractDataFromTexture(input);
-        weblas.gpu.gl.deleteTexture(input._texture);
         delete input._texture;
         delete input._texdims;
     }
@@ -1010,19 +1011,20 @@ function NeuronNode(tag) {
 window['NeuronNode'] = NeuronNode;
 NeuronNode.prototype.run = function(input) {
 
-    if(input._texture && typeof(input._data) == "undefined"){
-        input._data = extractDataFromTexture(input);
-        weblas.gpu.gl.deleteTexture(input._texture);
-        delete input._texture;
-        delete input._texdims;
-    }
   var inputDims = input._dims;
   var numberOfImages = inputDims._dims[0];
   var inputImageDims = inputDims.removeDimensions(1);
   var elementCount = inputImageDims.elementCount();
   var flattenedDimensions = new Dimensions(numberOfImages, elementCount);
+  var flattenedInput;
 
-  var flattenedInput = input.view();
+    if(input._texture && input._data === null && !flattenedDimensions.areEqualTo(input._texdims)){
+        input._data = extractDataFromTexture(input);
+        var flattenedInput = input.view();
+    } else {
+        flattenedInput = input;
+    }
+
   flattenedInput.reshape(flattenedDimensions);
 
   var expectedWeightsDimensions = new Dimensions(elementCount, this._outputsCount);
@@ -1033,7 +1035,7 @@ NeuronNode.prototype.run = function(input) {
   this._output = matrixDot(flattenedInput, this._weights, this._bias, this._dropout);
   this._output.setName(this._name);
 
-  if(typeof(this._output._texture) == "undefined"){
+  if(this._output._texture === void(0)){
     matrixAddInplace(this._output, this._bias, 1.0);
 
 
@@ -1061,11 +1063,8 @@ function NormalizeNode(tag) {
 window['NormalizeNode'] = NormalizeNode;
 NormalizeNode.prototype.run = function(input) {
 
-    if(input._texture && typeof(input._data) == "undefined"){
+    if(input._texture && input._data === null){
         input._data = extractDataFromTexture(input);
-        weblas.gpu.gl.deleteTexture(input._texture);
-        delete input._texture;
-        delete input._texdims;
     }
 
   this._output = matrixLocalResponse(input, this._windowSize, this._k, this._alpha, this._beta);
@@ -1086,6 +1085,9 @@ function PoolNode(tag) {
 }
 window['PoolNode'] = PoolNode;
 PoolNode.prototype.run = function(input) {
+    if(input._texture && input._data === null){
+        input._data = extractDataFromTexture(input);
+    }
   this._output = matrixMaxPatch(input, this._patchWidth, this._stride);
   return this._output;
 };
@@ -1113,11 +1115,8 @@ function MaxNode(tag) {
 window['MaxNode'] = MaxNode;
 MaxNode.prototype.run = function(input) {
 
-    if(input._texture && typeof(input._data) == "undefined"){
+    if(input._texture && input._data === null){
         input._data = extractDataFromTexture(input);
-        weblas.gpu.gl.deleteTexture(input._texture);
-        delete input._texture;
-        delete input._texdims;
     }
 
   this._output = matrixSoftmax(input);
@@ -1432,7 +1431,7 @@ function patchesIntoRows(input, kernelWidth, stride) {
 
 function matrixCorrelate(input, kernels, kernelWidth, kernelCount, stride, bias) {
 
-  console.log("Correlate");
+  //console.log("Correlate");
 
   var inputDims = input._dims;
   // We're expecting (# of images, height, width, # of channels)
@@ -1502,7 +1501,7 @@ function matrixCorrelate(input, kernels, kernelWidth, kernelCount, stride, bias)
   }
   output.reshape(outputDims);
 
-  if(typeof(patches._texture) != "undefined"){
+  if(patches._texture !== void(0)){
       weblas.gpu.gl.context.deleteTexture(patches._texture);
   }
 
@@ -1687,13 +1686,13 @@ function sgemm(M, N, K, alpha, A, B, beta, C){
     // create input textures from data
 
     // cached texture for A?
-    if(typeof(A._texture) === "undefined"){
+    if(A._texture === void(0)){
         // nope, create and cache it
 
         if (A._bitsPerFloat === 32) {
           texels0 = A._data;
         } else {
-            console.log("scaling A");
+            //console.log("scaling A");
             texels0 = new Float32Array(A._quantizedData);
             texels0 = weblas.sscal(M, K, A._spread, texels0, A._min);
         }
@@ -1703,7 +1702,7 @@ function sgemm(M, N, K, alpha, A, B, beta, C){
     }
 
     // cached texture for transpose of B?
-    if(typeof(B._Ttexture) === "undefined"){
+    if(B._Ttexture === void(0)){
         // nope, create and cache it
 
         if (B._bitsPerFloat === 32) {
@@ -1726,7 +1725,7 @@ function sgemm(M, N, K, alpha, A, B, beta, C){
     }
 
     // cached texture for transpose C?
-    if(typeof(C._texture) === "undefined"){
+    if(C._texture === void(0)){
         C._texture = gl.createDataTexture(1, N, C._data);
         C._texdims = new Dimensions([1, N]);
     }
@@ -1738,11 +1737,11 @@ function sgemm(M, N, K, alpha, A, B, beta, C){
 
     var texture3 = gl.createDataTexture(M, N);
 
-    console.log(M, N, K, alpha, beta);
+    //console.log(M, N, K, alpha, beta);
     weblas.gpu.sgemm(M, N, K, alpha, texture0, texture1, beta, texture2, texture3);
 
 
-    var out = new Buffer([M, N]);
+    var out = new Buffer([M, N], null);
     out._texture = texture3;
     out._texdims = new Dimensions([M, N]);
     return out;
@@ -1840,9 +1839,16 @@ function matrixJoinChannels(inputs) {
   var output = new Buffer(outputDims);
 
   var inputDatas = [];
+  var input;
   for (var index = 0; index < inputsCount; index += 1) {
-    console.assert(inputs[index]._dims.areEqualTo(inputDims));
-    inputDatas.push({data: inputs[index]._data, offset: 0});
+    input = inputs[index];
+    console.assert(input._dims.areEqualTo(inputDims));
+
+    if(input._texture && input._data === null){
+        input._data = extractDataFromTexture(input);
+    }
+
+    inputDatas.push({data: input._data, offset: 0});
   }
 
   var outputData = output._data;
@@ -1851,7 +1857,7 @@ function matrixJoinChannels(inputs) {
 
   while (outputOffset < outputElementCount) {
     for (var index = 0; index < inputsCount; index += 1) {
-      var input = inputDatas[index];
+      input = inputDatas[index];
       var sourceRow = input.data.subarray(input.offset, (input.offset + inputChannels));
       outputData.set(sourceRow, outputOffset);
       input.offset += inputChannels;
@@ -1864,7 +1870,7 @@ function matrixJoinChannels(inputs) {
 
 function matrixDot(input, weights, bias, dropout) {
 
-  console.log("Dot");
+  //console.log("Dot");
 
   var inputDims = input._dims;
   // We're expecting (# of images, # of values)
@@ -1936,7 +1942,7 @@ function matrixDot(input, weights, bias, dropout) {
 
   }
 
-    if(typeof(input._texture) != "undefined"){
+    if(input._texture !== void(0)){
         weblas.gpu.gl.context.deleteTexture(input._texture);
     }
   output.reshape(outputDims);
@@ -2052,16 +2058,18 @@ function matrixMaxPatch(input, patchWidth, stride) {
 
   var gl = weblas.gpu.gl;
 
-  if(typeof(input._texture) == "undefined"){
-    console.log("creating texture for sdwns.");
-    texture0 = gl.createDataTexture(M, N * channels, input._data);
+  if(input._texture === void(0)){
+    //console.log("creating texture for sdwns.");
+    input._texture = gl.createDataTexture(M, N * channels, input._data);
+    input._texdims = new Dimensions([M, N * channels]);
   }
 
+  texture0 = input._texture;
   texture3 = gl.createDataTexture(M_out, N_out * channels, null);
 
   weblas.gpu.sdwns(M, N, channels, factor, stride, texture0, texture3);
 
-  var output = new Buffer(new Dimensions(imageCount, M_out , N_out, channels));
+  var output = new Buffer(new Dimensions(imageCount, M_out , N_out, channels), null);
 
   output._texture = texture3;
   output._texdims = new Dimensions(M_out, N_out * channels);
@@ -2163,32 +2171,42 @@ function matrixMax(input, maxValue) {
   } else {
     var inputDims = input._dims._dims;
 
-    var M = inputDims[1], N, C;
+    var M, N;
 
-    N = inputDims.length >= 3 ? inputDims[2] : 1;
-    C = inputDims.length >= 4 ? inputDims[3] : 1;
-
-    if (N === 1) {
-      N = M;
-      M = 1;
-    }
     var texture0,
         texture3;
 
     var gl = weblas.gpu.gl;
 
     if(typeof(input._texture) == "undefined"){
-        console.log("creating texture for sclmp.");
-        texture0 = gl.createDataTexture(M, N * C, input._data);
+        //console.log("creating texture for sclmp.");
+
+        M = inputDims[1];
+        n = inputDims.length >= 3 ? inputDims[2] : 1;
+        c = inputDims.length >= 4 ? inputDims[3] : 1;
+
+        if (n === 1) {
+          n = M;
+          M = 1;
+        }
+        N = n * c;
+        input._texture = gl.createDataTexture(M, N, input._data);
+        input._texdims = new Dimensions([M, N]);
+        texture3 = gl.createDataTexture(M, N, null);
+    } else {
+        // reuse dimensions from texture
+        M = input._texdims._dims[0];
+        N = input._texdims._dims[1];
+        texture3 = gl.createDataTexture(M, N);
     }
 
-    texture3 = gl.createDataTexture(M, N * C, null);
+    texture0 = input._texture;
 
-    weblas.gpu.sclmp(M, N * C, maxValue, null, texture0, texture3);
+    weblas.gpu.sclmp(M, N, maxValue, null, texture0, texture3);
 
-    var output = new Buffer(inputDims);
+    var output = new Buffer(inputDims, null);
     output._texture = texture3;
-    output._texdims = new Dimensions([M, N * C]);
+    output._texdims = new Dimensions([M, N]);
 
     return output;
 
