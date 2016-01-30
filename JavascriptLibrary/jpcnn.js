@@ -1710,7 +1710,7 @@ function sgemm(M, N, K, alpha, A, B, beta, C){
           B._Ttexture = gl.createDataTexture(N, K, texels1);
         } else {
             // pipeline sscal for tranpose of B
-            texels1 = transpose(K, N, new Float32Array(B._quantizedData));
+            texels1 = weblas.util.transpose(K, N, new Float32Array(B._quantizedData));
 
             var textureB = gl.createDataTexture(N, K, texels1);
 
@@ -1748,19 +1748,6 @@ function sgemm(M, N, K, alpha, A, B, beta, C){
 
 }
 
-// tranpose a typed array in row major order, with the given row and column
-// numers
-function transpose(r, c, typedArray){
-	var result = new typedArray.constructor(r*c);
-
-	for(var i = 0; i < r; i++){
-		for(var j = 0; j < c; j++){
-			result[j * r + i] = typedArray[i * c + j];
-		}
-	}
-
-	return result;
-}
 
 function naiveGemmScaleA(
   m,
