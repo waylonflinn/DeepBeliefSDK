@@ -370,8 +370,7 @@ Buffer.prototype.extractDataFromTexture = function(){
 
     return output;
 };
-
-function bufferFromTagDict(tagDict) {
+function bufferFromTagDict(tagDict, useWebGL, transpose) {
   console.assert(tagDict.type === JP_DICT);
   var bitsPerFloat = tagDict.getUintFromDict('float_bits');
   console.assert((bitsPerFloat === 32) || (bitsPerFloat === 16) || (bitsPerFloat === 8));
@@ -401,27 +400,41 @@ function bufferFromTagDict(tagDict) {
 
     var min = tagDict.getFloatFromDict('min');
     var max = tagDict.getFloatFromDict('max');
-    if (false) {
-      var intRange = (1 << bitsPerFloat);
-      var spread = ((max - min) / intRange);
 
-      var floatBuffer = new Float32Array(elementCount);
-      var quantizedBuffer;
-      if (bitsPerFloat === 16) {
-        quantizedBuffer = new Uint16Array(dataTag.value);
-      } else if (bitsPerFloat === 8) {
-        quantizedBuffer = new Uint8Array(dataTag.value);
+    var buffer = new Buffer(dims, dataTag.value, {bitsPerFloat: bitsPerFloat, min: min, max: max});
+
+    if (useWebGL) {
+    // preload a texture into GPU memory
+    // this is cheating just a tiny bit, without this step the first image
+    // would take about 3 seconds to classify
+
+      var gl = weblas.gpu.gl;
+      var texels1,
+          texDims;
+
+        if(transpose){
+            texels1 = weblas.util.transpose(dims._dims[0], dims._dims[1], new Float32Array(buffer._quantizedData));
+            texDims = new Dimensions([dims._dims[1], dims._dims[0]]);
+        } else {
+            texels1 = new Float32Array(buffer._quantizedData);
+            texDims = new Dimensions([dims._dims[0], dims._dims[1]]);
+        }
+
+        var textureB = gl.createDataTexture(texDims._dims[0], texDims._dims[1], texels1),
+            textureOut = gl.createDataTexture(texDims._dims[0], texDims._dims[1], null);
+
+
+        weblas.gpu.sscal(texDims._dims[0], texDims._dims[1], buffer._spread, textureB, buffer._min, textureOut);
+
+        gl.context.deleteTexture(textureB);
+
+      if(transpose){
+          buffer._Ttexture = textureOut;
+          buffer._Ttexdims = texDims;
       } else {
-        console.log('Bad bitsPerFloat ' + bitsPerFloat);
-        return null;
+          buffer._texture = textureOut;
+          buffer._texdims = texDims;
       }
-      for (var index = 0; index < elementCount; index += 1) {
-        var quantizedValue = quantizedBuffer[index];
-        floatBuffer[index] = ((quantizedValue * spread) + min);
-      }
-      var buffer = new Buffer(dims, floatBuffer, {bitsPerFloat: 32, min: 0, max: 1});
-    } else {
-      var buffer = new Buffer(dims, dataTag.value, {bitsPerFloat: bitsPerFloat, min: min, max: max});
     }
   }
   return buffer;
@@ -447,7 +460,7 @@ function bufferFromFileAtURL(url) {
     // The flag for this should be set in the callbacks.
   }
   var tag = tagFromMemory(xhr.response, 0);
-  var buffer = bufferFromTagDict(tag);
+  var buffer = bufferFromTagDict(tag, false);
   buffer.setName(url);
   return buffer;
 }
@@ -458,7 +471,7 @@ function delayedBufferFromFileAtURL(url, callback) {
   xhr.responseType = 'arraybuffer';
   xhr.onload = function(e) {
     var tag = tagFromMemory(xhr.response, 0);
-    var buffer = bufferFromTagDict(tag);
+    var buffer = bufferFromTagDict(tag, false);
     buffer.setName(url);
     callback(buffer)
   };
@@ -490,7 +503,7 @@ Network = function(filename, onLoad, options) {
     var myNetwork = myThis;
     return function(e) {
       if (this.status == 200) {
-        myNetwork.initializeFromArrayBuffer(this.response);
+        myNetwork.initializeFromArrayBuffer(this.response, options.useWebGL);
       }
     };
   }(this);
@@ -548,20 +561,20 @@ Network.prototype.classifyImage = function(input, doMultiSample, layerOffset, us
 
   return result;
 };
-Network.prototype.initializeFromArrayBuffer = function(arrayBuffer) {
+Network.prototype.initializeFromArrayBuffer = function(arrayBuffer, useWebGL) {
   this.binaryFormat = new BinaryFormat(arrayBuffer);
   var graphDict = this.binaryFormat.firstTag();
   this._fileTag = graphDict;
   var dataMeanTag = graphDict.getTagFromDict('data_mean');
   console.assert(dataMeanTag != null);
-  this._dataMean = bufferFromTagDict(dataMeanTag);
+  this._dataMean = bufferFromTagDict(dataMeanTag, false);
 
   var layersTag = graphDict.getTagFromDict('layers');
   var layerSubTags = layersTag.getSubTags();
   var layers = [];
   var previousClassName;
   _.each(layerSubTags, function(layerSubTag) {
-    var layerNode = nodeFromTag(layerSubTag);
+    var layerNode = nodeFromTag(layerSubTag, useWebGL);
 
     var className = layerNode._className;
     var shouldSkip = ((className === 'relu') && (previousClassName === 'relu'));
@@ -781,7 +794,7 @@ BinaryTag.prototype.getFloatFromDict = function(wantedKey) {
   return tag.value;
 };
 
-function nodeFromTag(tag) {
+function nodeFromTag(tag, useWebGL) {
   var classLookup = {
     'conv': ConvNode,
     'dropout': DropoutNode,
@@ -795,7 +808,7 @@ function nodeFromTag(tag) {
   };
   var tagClass = tag.getStringFromDict('class');
   var jsClass = classLookup[tagClass];
-  var result = new jsClass(tag);
+  var result = new jsClass(tag, useWebGL);
   var tagName = tag.getStringFromDict('name');
   result._className = tagClass;
   result._name = tagName;
@@ -805,7 +818,7 @@ function nodeFromTag(tag) {
 /**
  * @constructor
  */
-function ConvNode(tag) {
+function ConvNode(tag, useWebGL) {
   var className = tag.getStringFromDict('class');
   console.assert(className === 'conv', 'Wrong class name in tag');
 
@@ -815,12 +828,12 @@ function ConvNode(tag) {
   this._sampleStride = specDict.getUintFromDict('stride');
 
   var kernelsTag = tag.getTagFromDict('kernels');
-  this._kernels = bufferFromTagDict(kernelsTag);
+  this._kernels = bufferFromTagDict(kernelsTag, useWebGL, true);
 
   this._useBias = tag.getUintFromDict('has_bias');
   if (this._useBias) {
     var biasTag = tag.getTagFromDict('bias');
-    this._bias = bufferFromTagDict(biasTag);
+    this._bias = bufferFromTagDict(biasTag, useWebGL);
   }
 
   this._marginSize = tag.getUintFromDict('padding');
@@ -899,7 +912,7 @@ FlatNode.prototype.run = function(input) {
 /**
  * @constructor
  */
-function GConvNode(tag) {
+function GConvNode(tag, useWebGL) {
   var className = tag.getStringFromDict('class');
   console.assert(className === 'gconv', 'Wrong class name in tag');
 
@@ -908,7 +921,7 @@ function GConvNode(tag) {
   var subnodeSubTags = subnodesTag.getSubTags();
   var subnodes = [];
   _.each(subnodeSubTags, function(subnodeSubTag) {
-    var subnode = nodeFromTag(subnodeSubTag);
+    var subnode = nodeFromTag(subnodeSubTag, useWebGL);
     subnodes.push(subnode);
   });
   this._subnodes = subnodes;
@@ -956,7 +969,7 @@ GConvNode.prototype.run = function(input) {
 /**
  * @constructor
  */
-function NeuronNode(tag) {
+function NeuronNode(tag, useWebGL) {
   var className = tag.getStringFromDict('class');
   console.assert(className === 'neuron', 'Wrong class name in tag');
 
@@ -964,12 +977,12 @@ function NeuronNode(tag) {
   this._outputsCount = specDict.getUintFromDict('num_output');
 
   var weightsTag = tag.getTagFromDict('weight');
-  this._weights = bufferFromTagDict(weightsTag);
+  this._weights = bufferFromTagDict(weightsTag, useWebGL, true);
 
   this._useBias = tag.getUintFromDict('has_bias');
   if (this._useBias) {
     var biasTag = tag.getTagFromDict('bias');
-    this._bias = bufferFromTagDict(biasTag);
+    this._bias = bufferFromTagDict(biasTag, useWebGL);
   }
 
   if (tag.getTagFromDict('dropout')) {
