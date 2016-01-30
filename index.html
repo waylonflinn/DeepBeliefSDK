@@ -12,6 +12,15 @@
   <link rel="stylesheet" type="text/css" href="JavascriptLibrary/CSS/spotter.css" />
   <link rel="stylesheet" type="text/css" href="JavascriptLibrary/CSS/deepbelief.css" />
 
+<style>
+#weblas-state{
+    background-color: inherit;
+    color: #111;
+    width: 250px;
+    margin: 20px auto 0 auto;
+    padding: 20px 5px;
+}
+</style>
 </head>
 <body id="deepbeliefdemo">
   <div id="wrap">
@@ -49,7 +58,12 @@
         <span class="action-button load-image">Choose a Photo</span>
       </span>
     </div>
-    <div class="action-button webgl-toggle">Enable WebGL</div>
+    <div id="weblas-state" class="action-button">
+        <span id="weblas-state-prefix">Not Using</span>
+        <img src="weblas.png"/>
+    </div>
+    <div class="action-button webgl-toggle"
+    style="padding-left: 20px; padding-right: 20px;">Enable</div>
 
     <a class="sdk-button" href="https://github.com/jetpacapp/DeepBeliefSDK"><span><i class="icon-github"></i></span><span><strong>SOURCE</strong><br>On Github</span></a>
   </div>
@@ -390,9 +404,11 @@ function setWebGLEnabled(state) {
   }
   g_webGLEnabled = state;
   if (state) {
-    $('.webgl-toggle').text('Disable WebGL');
+    $('.webgl-toggle').html('Disable');
+    $('#weblas-state-prefix').html('Using');
   } else {
-    $('.webgl-toggle').text('Enable WebGL');
+    $('.webgl-toggle').html('Enable');
+    $('#weblas-state-prefix').html('Not Using');
   }
 }
 

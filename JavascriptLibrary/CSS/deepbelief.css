@@ -222,12 +222,13 @@ body#spotter {
   background-color: #bf2942;
   color: #FFF;
   text-align: center;
-  line-height: 20px;
+  line-height: 30px;
   font-size: 20px;
   display: inline-block;
   padding: 20px 100px;
   margin: 30px auto 0 auto;
   cursor: pointer;
+  /* vertical-align: baseline; */
 }
 
 .action-button:hover, .action-button:active {
