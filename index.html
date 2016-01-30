@@ -5,9 +5,7 @@
 <!--[if gt IE 8]><!--> <html class="no-js" lang="en"> <!--<![endif]-->
 <head>
   <title>Deep Belief in Javascript</title>
-  <script type="text/javascript" src="JavascriptLibrary/Utils/modernizr.js"></script>
-
-  <script type="text/javascript" src="../weblas/dist/weblas.js"></script>
+  <script type="text/javascript" src="JavascriptLibrary/Utils/weblas.js"></script>
   <link rel="stylesheet" type="text/css" href="JavascriptLibrary/CSS/bootstrap-2.3.1.min.css" />
   <link rel="stylesheet" type="text/css" href="JavascriptLibrary/CSS/bootstrap-responsive-2.3.1.min.css" />
   <link rel="stylesheet" type="text/css" href="JavascriptLibrary/CSS/flat-ui.css" />
@@ -432,7 +430,7 @@ $(_.delay(function() {
     });
     g_video = $('#live').get(0);
     var networkUrl = 'networks/jetpac_untransposed.ntwk'
-    g_network = new Network(networkUrl, onNetworkLoad, {progress: onNetworkProgress, useWebGL: hasWebGL});
+    g_network = new Network(networkUrl, onNetworkLoad, {progress: onNetworkProgress, useWebGL: hasWebGL()});
   }
 }, 0));
     </script>
