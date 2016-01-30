@@ -347,40 +347,30 @@ Buffer.prototype.viewAtTopIndex = function(index) {
   var output = new Buffer(outputDims, viewData);
   return output;
 };
-Buffer.prototype.getGPUBuffer = function(gpuCalculator, inputDims) {
-  if (_.isUndefined(inputDims)) {
-    inputDims = this._dims;
-  }
-  if (_.isUndefined(this._gpuBuffer)) {
-    var data;
-    if (this._bitsPerFloat === 32) {
-      data = this._data;
-    } else {
-      data = this._quantizedData;
-    }
-    var dims = inputDims._dims;
-    var width = dims[1];
-    var height = dims[0];
-    var channels;
-    if (dims.length > 2) {
-      channels = dims[2];
-    } else {
-      channels = 1;
-    }
+// extract weblas data from _texture and place it in _data
+Buffer.prototype.extractDataFromTexture = function(){
 
-    console.assert(this._name !== 'None');
+    var M = this._texdims._dims[0],
+        N = this._texdims._dims[1],
+        texture3 = this._texture,
+        output;
 
-    var gpuBuffer = gpuCalculator.createBuffer({
-      width: width,
-      height: height,
-      channels: channels,
-      bitDepth: this._bitsPerFloat,
-      data: data,
-      debugInfo: this.toString()});
-    this._gpuBuffer = gpuBuffer;
-  }
-  return this._gpuBuffer;
+    var out = weblas.gpu.gl.createOutputTexture(M, N);
+
+    // float extraction
+    weblas.gpu.encode(M, N, texture3, out);
+
+    output = new Float32Array(weblas.gpu.gl.readData(M, N));
+
+    weblas.gpu.gl.context.deleteTexture(texture3);
+    weblas.gpu.gl.context.deleteTexture(out);
+
+    delete this._texture;
+    delete this._texdims;
+
+    return output;
 };
+
 function bufferFromTagDict(tagDict) {
   console.assert(tagDict.type === JP_DICT);
   var bitsPerFloat = tagDict.getUintFromDict('float_bits');
@@ -478,28 +468,6 @@ function delayedBufferFromFileAtURL(url, callback) {
   xhr.send();
 }
 
-// extract weblas data from _texture and place it in _data
-function extractDataFromTexture(buffer){
-    var M = buffer._texdims._dims[0],
-        N = buffer._texdims._dims[1],
-        texture3 = buffer._texture,
-        output;
-
-    var out = weblas.gpu.gl.createOutputTexture(M, N);
-
-    // float extraction
-    weblas.gpu.encode(M, N, texture3, out);
-
-    output = new Float32Array(weblas.gpu.gl.readData(M, N));
-
-    weblas.gpu.gl.context.deleteTexture(texture3);
-    weblas.gpu.gl.context.deleteTexture(out);
-
-    delete buffer._texture;
-    delete buffer._texdims;
-
-    return output;
-}
 
 /**
  * @constructor
@@ -861,7 +829,7 @@ window['ConvNode'] = ConvNode;
 ConvNode.prototype.run = function(input) {
 
     if(input._texture && input._data === null){
-        input._data = extractDataFromTexture(input);
+        input._data = input.extractDataFromTexture();
         delete input._texture;
         delete input._texdims;
     }
@@ -951,7 +919,7 @@ window['GConvNode'] = GConvNode;
 GConvNode.prototype.run = function(input) {
 
     if(input._texture && input._data === null){
-        input._data = extractDataFromTexture(input);
+        input._data = input.extractDataFromTexture();
         delete input._texture;
         delete input._texdims;
     }
@@ -1019,7 +987,7 @@ NeuronNode.prototype.run = function(input) {
   var flattenedInput;
 
     if(input._texture && input._data === null && !flattenedDimensions.areEqualTo(input._texdims)){
-        input._data = extractDataFromTexture(input);
+        input._data = input.extractDataFromTexture();
         var flattenedInput = input.view();
     } else {
         flattenedInput = input;
@@ -1064,7 +1032,7 @@ window['NormalizeNode'] = NormalizeNode;
 NormalizeNode.prototype.run = function(input) {
 
     if(input._texture && input._data === null){
-        input._data = extractDataFromTexture(input);
+        input._data = input.extractDataFromTexture();
     }
 
   this._output = matrixLocalResponse(input, this._windowSize, this._k, this._alpha, this._beta);
@@ -1086,7 +1054,7 @@ function PoolNode(tag) {
 window['PoolNode'] = PoolNode;
 PoolNode.prototype.run = function(input) {
     if(input._texture && input._data === null){
-        input._data = extractDataFromTexture(input);
+        input._data = input.extractDataFromTexture();
     }
   this._output = matrixMaxPatch(input, this._patchWidth, this._stride);
   return this._output;
@@ -1116,7 +1084,7 @@ window['MaxNode'] = MaxNode;
 MaxNode.prototype.run = function(input) {
 
     if(input._texture && input._data === null){
-        input._data = extractDataFromTexture(input);
+        input._data = input.extractDataFromTexture();
     }
 
   this._output = matrixSoftmax(input);
@@ -1525,6 +1493,7 @@ function matrixGemm(
 
   if (g_useWebGL){
 
+      /*
     return glGemm(
       m,
       n,
@@ -1537,7 +1506,7 @@ function matrixGemm(
       beta,
       cBuffer,
       ldc
-    );
+  );*/
   } else {
     return naiveGemm(
       m,
@@ -1611,34 +1580,11 @@ function matrixGemmScaleA(
 
   if (g_useWebGL) {
 
-    var expectedC = glGemm(
-      m,
-      n,
-      k,
-      alpha,
-      aBuffer,
-      lda,
-      bBuffer,
-      ldb,
-      beta,
-      cBuffer,
-      ldc,
-      aBuffer._spread,
-      aBuffer._min,
-      aBuffer._bitsPerFloat
-    );
-
-
-    return expectedC;
-
-  } else {
-
-
       // naiveGemm uses column major ordering, this can be emulated by
       // swapping A and B (and m and n) and taking the transpose of the result
       return sgemm(n, m, k, scale, bBuffer, aBuffer, scale, bias);
 
-/*
+  } else {
       var expectedC =  naiveGemmScaleA(
       m,
       n,
@@ -1656,10 +1602,10 @@ function matrixGemmScaleA(
     );
 
     return expectedC;
-    */
   }
 
 }
+
 /* sgemm wrapper function for Deep Belief buffers, calls directly into
     webgl level texture code
 
@@ -1832,7 +1778,7 @@ function matrixJoinChannels(inputs) {
     console.assert(input._dims.areEqualTo(inputDims));
 
     if(input._texture && input._data === null){
-        input._data = extractDataFromTexture(input);
+        input._data = input.extractDataFromTexture();
     }
 
     inputDatas.push({data: input._data, offset: 0});
@@ -2022,88 +1968,56 @@ function matrixLocalResponse(input, windowSize, k, alpha, beta) {
 
 function matrixMaxPatch(input, patchWidth, stride) {
   var output;
+    var inputDims = input._dims._dims;
+    var imageCount = inputDims[0];
+
+    console.assert((imageCount === 1), 'Only handles the single-image case');
+
+    var N = inputDims[2],
+        M = inputDims[1],
+        factor = patchWidth,
+        channels = inputDims[3];
+
+    var N_out = Math.floor((N - factor) / stride) + 1;
+    var M_out = Math.floor((M - factor) / stride) + 1;
+
   if (g_useWebGL) {
-    output = glMaxPatch(input, patchWidth, stride);
+
+    var texture0,
+        texture3;
+
+    var gl = weblas.gpu.gl;
+
+    if(input._texture === void(0)){
+      //console.log("creating texture for sdwns.");
+      input._texture = gl.createDataTexture(M, N * channels, input._data);
+      input._texdims = new Dimensions([M, N * channels]);
+    }
+
+    texture0 = input._texture;
+    texture3 = gl.createDataTexture(M_out, N_out * channels, null);
+
+    weblas.gpu.sdwns(M, N, channels, factor, stride, texture0, texture3);
+
+    var output = new Buffer(new Dimensions(imageCount, M_out , N_out, channels), null);
+
+    output._texture = texture3;
+    output._texdims = new Dimensions(M_out, N_out * channels);
+
   } else {
 
+  var outputDims = new Dimensions(imageCount, M_out , N_out, channels);
 
-  var inputDims = input._dims._dims;
-  var imageCount = inputDims[0];
+  var outputGPUDims = new Dimensions(M_out, N_out * channels / 4, 4);
 
-  console.assert((imageCount === 1), 'Only handles the single-image case');
+    outputData = naiveMaxPatch(input, patchWidth, stride);
 
-  var N = inputDims[2],
-      M = inputDims[1],
-      factor = patchWidth,
-      channels = inputDims[3];
+  var output = new Buffer(outputGPUDims, outputData);
 
-  var N_out = Math.floor((N - factor) / stride) + 1;
-  var M_out = Math.floor((M - factor) / stride) + 1;
-
-  var texture0,
-      texture3;
-
-  var gl = weblas.gpu.gl;
-
-  if(input._texture === void(0)){
-    //console.log("creating texture for sdwns.");
-    input._texture = gl.createDataTexture(M, N * channels, input._data);
-    input._texdims = new Dimensions([M, N * channels]);
-  }
-
-  texture0 = input._texture;
-  texture3 = gl.createDataTexture(M_out, N_out * channels, null);
-
-  weblas.gpu.sdwns(M, N, channels, factor, stride, texture0, texture3);
-
-  var output = new Buffer(new Dimensions(imageCount, M_out , N_out, channels), null);
-
-  output._texture = texture3;
-  output._texdims = new Dimensions(M_out, N_out * channels);
-
-  //var outputData = weblas.sdwns(M, N, c, factor, stride, X);
-
-
-  //var outputDims = new Dimensions(imageCount, outputHeight , outputWidth, outputChannels);
-  //var outputDims = new Dimensions(imageCount, M_out , N_out, c);
-
-  //var outputGPUDims = new Dimensions(outputHeight, outputGPUWidth, 4);
-  //var outputGPUDims = new Dimensions(M_out, N_out * c / 4, 4);
-
-  //var output = new Buffer(outputGPUDims, outputData);
-  //output.reshape(outputDims);
-
-  /*
-    //showArray(input._data, "input");
-    //downloadData(input, "input", downloadNumber.toString());
-    output = naiveMaxPatch(input, patchWidth, stride);
-    //downloadData(output, "output", downloadNumber.toString());
-    //downloadNumber++;
-    */
-    //download(arrayToString(output._data), "output."+output._name+output._dims, "text/plain");
-    //showArray(output._data, "output");
+  output.reshape(outputDims);
 
   }
   return output;
-}
-function arrayToString(typedArray){
-    return "["+typedArray.toString()+"]";
-}
-function downloadData(typedArray, prefix, id){
-    download(arrayToString(typedArray._data), id+"."+prefix+"."+typedArray._name+"."+typedArray._dims, "text/plain");
-}
-function download(text, name, type) {
-    var a = document.createElement("a");
-    var file = new Blob([text], {type: type});
-    a.href = URL.createObjectURL(file);
-    a.download = name;
-    a.click();
-}
-
-function showArray(typedArray, title){
-    //window.open('data:text/csv;charset=utf-8,' + escape(myCsv));
-    var win = window.open('data:text/plain;charset=utf-8,' + "["+typedArray.toString()+"]");
-    win.document.title = title;
 }
 
 function naiveMaxPatch(input, patchWidth, stride) {
@@ -2154,8 +2068,6 @@ function naiveMaxPatch(input, patchWidth, stride) {
 
 function matrixMax(input, maxValue) {
   if (g_useWebGL) {
-    return glMax(input, maxValue);
-  } else {
     var inputDims = input._dims._dims;
 
     var M, N;
@@ -2196,12 +2108,9 @@ function matrixMax(input, maxValue) {
     output._texdims = new Dimensions([M, N]);
 
     return output;
+  } else {
 
-    /*
-    out =  weblas.sclmp(M, N * C, maxValue, null, input._data);
-
-    return new Buffer(inputDims, out);
-    */
+    return naiveMax(input, maxValue);
 
   }
 }
@@ -2272,461 +2181,6 @@ function matrixSoftmax(input) {
   }
 
   return output;
-}
-
-var g_gpuCalculator;
-function getGPUCalculator() {
-  if (_.isUndefined(g_gpuCalculator)) {
-    g_gpuCalculator = new GPUCalculator();
-  }
-  return g_gpuCalculator;
-}
-
-var gemmShader = "                                              \n\
-  precision mediump float;                                      \n\
-  varying vec2 outTexCoord;                                     \n\
-  uniform sampler2D a;                                          \n\
-  uniform vec2 aScale;                                          \n\
-  uniform sampler2D b;                                          \n\
-  uniform vec2 bScale;                                          \n\
-  uniform sampler2D c;                                          \n\
-  uniform vec2 cScale;                                          \n\
-  uniform float alpha;                                          \n\
-  uniform float beta;                                           \n\
-  uniform float k;                                              \n\
-  uniform float aValueScale;                                    \n\
-  uniform float aValueOffset;                                   \n\
-  void main(void) {                                             \n\
-    vec2 texCoord = outTexCoord;                                \n\
-    float i = texCoord.x;                                       \n\
-    float j = texCoord.y;                                       \n\
-    vec2 cCoords = vec2(i, j) * cScale;                         \n\
-    float cValue;                                               \n\
-    if (beta != 0.0) {                                          \n\
-      cValue = texture2D(c, cCoords).r;                         \n\
-    } else {                                                    \n\
-      cValue = 0.0;                                             \n\
-    }                                                           \n\
-    float total = 0.0;                                          \n\
-    for (int l = 0; l < 10000; l += 1) {                        \n\
-      if (l >= int(k)) {                                        \n\
-        break;                                                  \n\
-      }                                                         \n\
-      float lCoord = (float(l) + 0.5);                          \n\
-      vec2 aCoords = vec2(i, lCoord) * aScale;                  \n\
-      float aValue = texture2D(a, aCoords).r;                   \n\
-      aValue = ((aValue * aValueScale) + aValueOffset);         \n\
-      vec2 bCoords = vec2(lCoord, j) * bScale;                  \n\
-      float bValue = texture2D(b, bCoords).r;                   \n\
-      total += (aValue * bValue);                               \n\
-    }                                                           \n\
-    gl_FragColor.r = (alpha * total) + (beta * cValue);         \n\
-  }                                                             \n\
-";
-
-var gemmShader4x = "                                            \n\
-  precision mediump float;                                      \n\
-  varying vec2 outTexCoord;                                     \n\
-  uniform sampler2D a;                                          \n\
-  uniform vec2 aScale;                                          \n\
-  uniform sampler2D b;                                          \n\
-  uniform vec2 bScale;                                          \n\
-  uniform sampler2D c;                                          \n\
-  uniform vec2 cScale;                                          \n\
-  uniform float alpha;                                          \n\
-  uniform float beta;                                           \n\
-  uniform float k;                                              \n\
-  uniform float aValueScale;                                    \n\
-  uniform float aValueOffset;                                   \n\
-  void main(void) {                                             \n\
-    vec2 texCoord = outTexCoord;                                \n\
-    float startI = ((texCoord.x - 0.5) * 4.0) + 0.5;            \n\
-    float j = texCoord.y;                                       \n\
-    vec2 cCoords = vec2(texCoord.x, texCoord.y) * cScale;       \n\
-    vec4 cPixel = texture2D(c, cCoords);                        \n\
-    for (int iInc = 0; iInc < 4; iInc += 1) {                   \n\
-      float i = startI + float(iInc);                           \n\
-      float iCoord = float(int(i) / 4) + 0.5;                   \n\
-      float cValue;                                             \n\
-      if (iInc == 0) {                                          \n\
-        cValue = cPixel.x;                                      \n\
-      } else if (iInc == 1) {                                   \n\
-        cValue = cPixel.y;                                      \n\
-      } else if (iInc == 2) {                                   \n\
-        cValue = cPixel.z;                                      \n\
-      } else if (iInc == 3) {                                   \n\
-        cValue = cPixel.w;                                      \n\
-      }                                                         \n\
-      float total;                                              \n\
-      if (beta != 0.0) {                                        \n\
-        total = (cValue * beta);                                \n\
-      } else {                                                  \n\
-        total = 0.0;                                            \n\
-      }                                                         \n\
-      for (int l = 0; l < 10000; l += 1) {                      \n\
-        if (l >= int(k)) {                                      \n\
-          break;                                                \n\
-        }                                                       \n\
-        float aLCoord = float(l) + 0.5;                         \n\
-        vec2 aCoords = vec2(iCoord, aLCoord) * aScale;          \n\
-        vec4 aPixel = texture2D(a, aCoords);                    \n\
-        float aValue;                                           \n\
-        if (iInc == 0) {                                        \n\
-          aValue = aPixel.x;                                    \n\
-        } else if (iInc == 1) {                                 \n\
-          aValue = aPixel.y;                                    \n\
-        } else if (iInc == 2) {                                 \n\
-          aValue = aPixel.z;                                    \n\
-        } else if (iInc == 3) {                                 \n\
-          aValue = aPixel.w;                                    \n\
-        }                                                       \n\
-        aValue = ((aValue * aValueScale) + aValueOffset);       \n\
-        float bLCoord = float(l / 4) + 0.5;                     \n\
-        int bLComponent = int(mod(float(l), 4.0));              \n\
-        vec2 bCoords = vec2(bLCoord, j) * bScale;               \n\
-        vec4 bPixel = texture2D(b, bCoords);                    \n\
-        float bValue;                                           \n\
-        if (bLComponent == 0) {                                 \n\
-          bValue = bPixel.x;                                    \n\
-        } else if (bLComponent == 1) {                          \n\
-          bValue = bPixel.y;                                    \n\
-        } else if (bLComponent == 2) {                          \n\
-          bValue = bPixel.z;                                    \n\
-        } else if (bLComponent == 3) {                          \n\
-          bValue = bPixel.w;                                    \n\
-        }                                                       \n\
-        total += (aValue * bValue);                             \n\
-      }                                                         \n\
-      float result = (alpha * total);                           \n\
-      if (iInc == 0) {                                          \n\
-        gl_FragColor.r = result;                                \n\
-      } else if (iInc == 1) {                                   \n\
-        gl_FragColor.g = result;                                \n\
-      } else if (iInc == 2) {                                   \n\
-        gl_FragColor.b = result;                                \n\
-      } else if (iInc == 3) {                                   \n\
-        gl_FragColor.a = result;                                \n\
-      }                                                         \n\
-    }                                                           \n\
-  }                                                             \n\
-";
-
-function glGemm(
-  m,
-  n,
-  inputK,
-  alpha,
-  inputA,
-  lda,
-  inputB,
-  ldb,
-  inputBeta,
-  inputC,
-  ldc,
-  inputAScale,
-  aOffset,
-  aBitDepth) {
-
-  if (_.isUndefined(inputAScale)) {
-    inputAScale = 1.0;
-  }
-  if (_.isUndefined(aOffset)) {
-    aOffset = 0.0;
-  }
-  if (_.isUndefined(aBitDepth)) {
-    aBitDepth = 32;
-  }
-
-  var aScale;
-  if ((aBitDepth === 32) || (aBitDepth === 16)) {
-    aScale = inputAScale;
-  } else {
-    var levels = ((1 << aBitDepth) - 1);
-    aScale = (inputAScale * levels);
-  }
-
-  var gpuCalculator = getGPUCalculator();
-
-  var maxTextureSize = 4096;
-
-  var previousCGPUBuffer = null;
-
-  var use4x = (((m % 4) == 0) && ((inputK % 4) == 0));
-  var shaderText;
-  var aFullDims;
-  var bFullDims;
-  var cDims;
-  if (use4x) {
-    shaderText = gemmShader4x;
-    aFullDims = new Dimensions(inputK, (m / 4), 4);
-    bFullDims = new Dimensions(n, (inputK / 4), 4);
-    cDims = new Dimensions(n, (m / 4), 4);
-  } else {
-    shaderText = gemmShader;
-    aFullDims = new Dimensions(inputK, m, 1);
-    bFullDims = new Dimensions(n, inputK, 1);
-    cDims = new Dimensions(n, m, 1);
-  }
-
-  var aFullBuffer = inputA.view().reshape(aFullDims);
-  var bFullBuffer = inputB.view().reshape(bFullDims);
-
-  var kStepCount = Math.ceil(inputK / maxTextureSize);
-  for (var kStep = 0; kStep < kStepCount; kStep += 1) {
-    var currentK = (inputK - (kStep * maxTextureSize));
-    if (currentK > maxTextureSize) {
-      currentK = maxTextureSize;
-    }
-    var originK = (kStep * maxTextureSize);
-
-    var aDims;
-    var bDims;
-    if (use4x) {
-      aDims = new Dimensions(currentK, (m / 4), 4);
-      bDims = new Dimensions(n, (currentK / 4), 4);
-    } else {
-      aDims = new Dimensions(currentK, m, 1);
-      bDims = new Dimensions(n, currentK, 1);
-    }
-
-    var aGPUBuffer;
-    var bGPUBuffer;
-    if (kStep === 0) {
-      inputA.setName('glGemm() inputA');
-      aGPUBuffer = inputA.getGPUBuffer(gpuCalculator, aDims);
-      inputB.setName('glGemm() inputB kStep=' + kStep);
-      bGPUBuffer = inputB.getGPUBuffer(gpuCalculator, bDims);
-    } else {
-      aFullBuffer.setName('glGemm() aFullBuffer');
-      var aSubregionBuffer = aFullBuffer.extractSubregion(originK, 0, aDims);
-      bFullBuffer.setName('glGemm() bFullBuffer');
-      var bSubregionBuffer;
-      if (use4x) {
-        bSubregionBuffer = bFullBuffer.extractSubregion(0, (originK / 4), bDims);
-      } else {
-        bSubregionBuffer = bFullBuffer.extractSubregion(0, originK, bDims);
-      }
-      aGPUBuffer = aSubregionBuffer.getGPUBuffer(gpuCalculator, aDims);
-      bGPUBuffer = bSubregionBuffer.getGPUBuffer(gpuCalculator, bDims);
-    }
-
-    var beta;
-    if (kStep === 0) {
-      var previousCBuffer;
-      if (inputBeta > 0.0) {
-        previousCBuffer = new Buffer(cDims, c._data);
-      } else {
-        previousCBuffer = new Buffer(cDims, null);
-      }
-      previousCBuffer.setName('glGemm() previousCBuffer');
-      previousCGPUBuffer = previousCBuffer.getGPUBuffer(gpuCalculator);
-      beta = inputBeta;
-    } else {
-      beta = 1.0;
-    }
-
-    var uniforms = {
-      'alpha': alpha,
-      'beta': beta,
-      'k': currentK,
-      'aValueScale': aScale,
-      'aValueOffset': aOffset
-    };
-    var inputBuffers = {
-      'a': aGPUBuffer,
-      'b': bGPUBuffer,
-      'c': previousCGPUBuffer
-    };
-
-    var startTime = new Date().getTime();
-    var outputCGPUBuffer = gpuCalculator.applyShader({
-      shaderText: shaderText,
-      inputBuffers: inputBuffers,
-      uniforms: uniforms,
-      width: cDims._dims[1],
-      height: cDims._dims[0]
-    });
-
-    if (kStep !== 0) {
-      gpuCalculator.deleteBuffer(aGPUBuffer);
-    }
-    gpuCalculator.deleteBuffer(bGPUBuffer);
-    if (previousCGPUBuffer) {
-      gpuCalculator.deleteBuffer(previousCGPUBuffer);
-    }
-    previousCGPUBuffer = outputCGPUBuffer;
-  }
-
-  var outputChannels = cDims._dims[2];
-  var outputData = gpuCalculator.getResult(previousCGPUBuffer, outputChannels);
-  var endTime = new Date().getTime();
-//  console.log('gemm took ' + (endTime - startTime) + 'ms');
-
-//  gpuCalculator.deleteBuffer(aBuffer);
-  gpuCalculator.deleteBuffer(previousCGPUBuffer);
-
-  var outputCDims = new Dimensions(n, m);
-  var outputBuffer = new Buffer(outputCDims, outputData);
-
-  return outputBuffer;
-}
-
-var maxPatchShader = "                     \n\
-  precision mediump float;                                      \n\
-  varying vec2 outTexCoord;                                     \n\
-  uniform sampler2D a;                                          \n\
-  uniform vec2 aScale;                                          \n\
-  uniform float patchWidth;                                     \n\
-  uniform float stride;                                         \n\
-  uniform float channelCount;                                   \n\
-  void main(void) {                                             \n\
-    vec2 texCoord = outTexCoord;                                \n\
-    float outputXAndChannels = floor(texCoord.x);               \n\
-    float outputChannel = mod(outputXAndChannels, channelCount); \n\
-    float outputX = floor(outputXAndChannels / channelCount);   \n\
-    float outputY = floor(texCoord.y);                          \n\
-    float inputOriginX = (outputX * stride);                    \n\
-    float inputOriginY = (outputY * stride);                    \n\
-    vec4 patchMax = vec4(-100000000.0, -100000000.0, -100000000.0, -100000000.0); \n\
-    for (int patchY = 0; patchY < 100; patchY += 1) {           \n\
-      if (patchY >= int(patchWidth)) {                               \n\
-        break;                                                  \n\
-      }                                                         \n\
-      float inputY = ((inputOriginY + float(patchY)) + 0.5);    \n\
-      for (int patchX = 0; patchX < 100; patchX += 1) {         \n\
-        if (patchX >= int(patchWidth)) {                        \n\
-          break;                                                \n\
-        }                                                       \n\
-        float inputX = ((inputOriginX + float(patchX)));        \n\
-        float inputXAndChannel = (inputX * channelCount) + outputChannel; \n\
-        vec2 inputCoords = vec2(inputXAndChannel + 0.5, inputY) * aScale; \n\
-        vec4 inputPixel = texture2D(a, inputCoords);            \n\
-        patchMax = max(patchMax, inputPixel);                   \n\
-      }                                                         \n\
-    }                                                           \n\
-    gl_FragColor = patchMax;                                    \n\
-  }                                                             \n\
-";
-
-function glMaxPatch(input, patchWidth, stride) {
-  var gpuCalculator = getGPUCalculator();
-
-  var inputDims = input._dims._dims;
-  var imageCount = inputDims[0];
-  console.assert((imageCount === 1), 'Only handles the single-image case');
-  var inputWidth = inputDims[2];
-  var inputHeight = inputDims[1];
-  var inputChannels = inputDims[3];
-
-  var quantizedChannels = Math.floor(inputChannels / 4);
-  console.assert(((quantizedChannels * 4) === inputChannels), 'Channel count must be a multiple of four');
-  var inputGPUWidth = (inputWidth * quantizedChannels);
-
-  var inputGPUDims = new Dimensions(inputHeight, inputGPUWidth, 4);
-
-  var outputWidth = Math.round(Math.floor((inputWidth - patchWidth) / stride) + 1);
-  var outputHeight = Math.round(Math.floor((inputHeight - patchWidth) / stride) + 1);
-  var outputChannels = inputChannels;
-  var outputDims = new Dimensions(imageCount, outputHeight, outputWidth, outputChannels);
-
-  var outputGPUWidth = (outputWidth * quantizedChannels);
-  var outputGPUDims = new Dimensions(outputHeight, outputGPUWidth, 4);
-
-  var inputGPUBuffer = input.getGPUBuffer(gpuCalculator, inputGPUDims);
-  var uniforms = {
-    'patchWidth': patchWidth,
-    'stride': stride,
-    'channelCount': quantizedChannels
-  };
-  var inputBuffers = {
-    'a': inputGPUBuffer
-  };
-
-  var outputGPUBuffer = gpuCalculator.applyShader({
-    shaderText: maxPatchShader,
-    inputBuffers: inputBuffers,
-    uniforms: uniforms,
-    width: outputGPUWidth,
-    height: outputHeight
-  });
-
-  var outputData = gpuCalculator.getResult(outputGPUBuffer, 4);
-  gpuCalculator.deleteBuffer(inputGPUBuffer);
-  gpuCalculator.deleteBuffer(outputGPUBuffer);
-
-  var outputBuffer = new Buffer(outputGPUDims, outputData);
-  outputBuffer.reshape(outputDims);
-
-  return outputBuffer;
-}
-
-var maxShader = "                     \n\
-  precision mediump float;                                      \n\
-  varying vec2 outTexCoord;                                     \n\
-  uniform sampler2D a;                                          \n\
-  uniform vec2 aScale;                                          \n\
-  uniform float maxValue;                                       \n\
-  void main(void) {                                             \n\
-    vec2 texCoord = outTexCoord;                                \n\
-    vec2 inputCoords = (texCoord * aScale);                     \n\
-    vec4 inputPixel = texture2D(a, inputCoords);                \n\
-    gl_FragColor = max(inputPixel, vec4(maxValue, maxValue, maxValue, maxValue)); \n\
-  }                                                             \n\
-";
-
-function glMax(input, maxValue) {
-  var gpuCalculator = getGPUCalculator();
-
-  var inputDims = input._dims._dims;
-  var imageCount = inputDims[0];
-  console.assert((imageCount === 1), 'Only handles the single-image case');
-  var inputHeight = inputDims[1];
-  var inputWidth;
-  if (inputDims.length < 3) {
-    inputWidth = 1;
-  } else {
-    inputWidth = inputDims[2];
-  }
-  var inputChannels;
-  if (inputDims.length < 4) {
-    inputChannels = 1;
-  } else {
-    inputChannels = inputDims[3];
-  }
-
-  var quantizedChannels = (inputChannels / 4);
-  if (inputWidth === 1) {
-    inputWidth = inputHeight;
-    inputHeight = 1;
-  }
-  var inputGPUWidth = (inputWidth * quantizedChannels);
-
-  var inputGPUDims = new Dimensions(inputHeight, inputGPUWidth, 4);
-
-  var inputGPUBuffer = input.getGPUBuffer(gpuCalculator, inputGPUDims);
-  var uniforms = {
-    'maxValue': maxValue
-  };
-  var inputBuffers = {
-    'a': inputGPUBuffer
-  };
-
-  var outputGPUBuffer = gpuCalculator.applyShader({
-    shaderText: maxShader,
-    inputBuffers: inputBuffers,
-    uniforms: uniforms,
-    width: inputGPUWidth,
-    height: inputHeight
-  });
-
-  var outputData = gpuCalculator.getResult(outputGPUBuffer, 4);
-  gpuCalculator.deleteBuffer(inputGPUBuffer);
-  gpuCalculator.deleteBuffer(outputGPUBuffer);
-
-  var outputBuffer = new Buffer(inputGPUDims, outputData);
-  outputBuffer.reshape(input._dims);
-
-  return outputBuffer;
 }
 
 // Shim for Internet Explorer's missing slice(), see
