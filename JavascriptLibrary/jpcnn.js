@@ -1607,7 +1607,7 @@ function matrixGemmScaleA(
 }
 
 /* sgemm wrapper function for Deep Belief buffers, calls directly into
-    webgl level texture code
+    weblas texture level code
 
     A - a Buffer
     B - a Buffer
