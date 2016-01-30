@@ -76,8 +76,6 @@
   <script type="text/javascript" src="JavascriptLibrary/Utils/jquery-2.0.3.min.js"></script>
   <script type="text/javascript" src="JavascriptLibrary/Utils/bootstrap-2.3.1.min.js"></script>
   <script type="text/javascript" src="JavascriptLibrary/Utils/underscore.js"></script>
-  <script type="text/javascript" src="JavascriptLibrary/Utils/glMatrix.js"></script>
-  <script type="text/javascript" src="JavascriptLibrary/Utils/webgl.js"></script>
   <script type="text/javascript" src="JavascriptLibrary/jpcnn.js"></script>
 		<script>
 		// First, checks if it isn't implemented yet.
@@ -328,24 +326,8 @@ function onFilePick(file) {
 }
 
 function hasWebGL() {
-  var canvas = document.createElement('canvas');
-  var gl;
-  try {
-    gl = canvas.getContext('webgl');
-  } catch (x) {
-    gl = null;
-  }
 
-  if (gl === null) {
-    try {
-      gl = canvas.getContext('experimental-webgl');
-      glExperimental = true;
-    } catch (x) {
-      gl = null;
-    }
-  }
-
-  if (gl) {
+  if (weblas.gpu.gl.context) {
     return true;
   } else {
     return false;
@@ -353,23 +335,7 @@ function hasWebGL() {
 }
 
 function getMaxTextureSize() {
-  var canvas = document.createElement('canvas');
-  var gl;
-  try {
-    gl = canvas.getContext('webgl');
-  } catch (x) {
-    gl = null;
-  }
-
-  if (gl === null) {
-    try {
-      gl = canvas.getContext('experimental-webgl');
-      glExperimental = true;
-    } catch (x) {
-      gl = null;
-    }
-  }
-
+    var gl = weblas.gpu.gl.context;
   if (gl) {
     return Number(gl.getParameter(gl.MAX_TEXTURE_SIZE));
   } else {
@@ -435,10 +401,8 @@ function setWebGLEnabled(state) {
 function checkCompatibility() {
   g_hasWebGL = hasWebGL();
   if (g_hasWebGL) {
-    // Some strange WebGL issues have cropped up on Firefox, so disable it by default for now
-    if (!$.browser.mozilla) {
-      //setWebGLEnabled(true);
-    }
+
+    setWebGLEnabled(true);
 
     var maxTextureSize = getMaxTextureSize();
     var neededTextureSize = 4096;
