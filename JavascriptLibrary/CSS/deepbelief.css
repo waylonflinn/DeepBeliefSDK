@@ -219,7 +219,7 @@ body#spotter {
 }
 
 .action-button {
-  background-color: #bf2942;
+  background-color: #2E2E2E;
   color: #FFF;
   text-align: center;
   line-height: 30px;
@@ -231,7 +231,7 @@ body#spotter {
 }
 
 .action-button:hover, .action-button:active {
-  background-color: #E0304E;
+  background-color: #40403B;
 }
 
 .file-button-container {
