@@ -1665,7 +1665,7 @@ function sgemm(M, N, K, alpha, A, B, beta, C){
         // nope, create and cache it
 
         if (B._bitsPerFloat === 32) {
-          texels1 = tranpose(K, N, B._data);
+          texels1 = weblas.util.transpose(K, N, B._data);
           B._Ttexture = gl.createDataTexture(N, K, texels1);
         } else {
             // pipeline sscal for tranpose of B
