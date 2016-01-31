@@ -14,11 +14,24 @@
 
 <style>
 #weblas-state{
-    background-color: inherit;
-    color: #111;
+    /*background-color: rgb(42, 46, 234);*/
+    color: #FFF;
     width: 250px;
-    margin: 20px auto 0 auto;
-    padding: 20px 5px;
+    margin: 30px auto 0 auto;
+    padding: 20px 10px;
+}
+#weblas-state:hover{
+    /*background-color: rgb(42, 46, 234);
+    color: #B1B1B1;*/
+}
+.webgl-toggle{
+    display: none;
+}
+#weblas-state:hover > .webgl-toggle{
+    display:inline;
+}
+#weblas-state:hover > .weblas-state-desc{
+    display: none;
 }
 .sub{
     font-size: smaller;
@@ -26,7 +39,16 @@
 .resize{
     width: 100px;
     height: auto;
+    margin-top: -10px;
 }
+.button-image{
+    height: 40px;
+    max-width: 100%;
+    vertical-align: top;
+    margin-top: -10px;
+    border: 0;
+}
+
 </style>
 </head>
 <body id="deepbeliefdemo">
@@ -67,11 +89,12 @@
       </span>
     </div>
     <div id="weblas-state" class="action-button">
-        <span id="weblas-state-prefix">Not Using</span>
-        <img src="weblas.png"/>
+        <span class="weblas-state-desc">
+            <span id="weblas-state-prefix">Not Using</span>
+            <img class='button-image' src="weblas.png"/>
+        </span>
+        <span class='webgl-toggle'>Enable</span>
     </div>
-    <div class="action-button webgl-toggle"
-    style="padding-left: 20px; padding-right: 20px;">Enable</div>
 
     <a class="sdk-button" href="https://github.com/jetpacapp/DeepBeliefSDK"><span><i class="icon-github"></i></span><span><strong>SOURCE</strong><br>On Github</span></a>
   </div>
@@ -447,7 +470,7 @@ $(_.delay(function() {
     $('.file-wrapper input[type=file]').bind('change focus click', SITE.fileInputs);
 
     $('.load-image').on('click', function(event) {
-
+        $('.file-wrapper input[type=file]').click();
     });
     $('.webgl-toggle').on('click', function(event) {
       toggleWebGL();

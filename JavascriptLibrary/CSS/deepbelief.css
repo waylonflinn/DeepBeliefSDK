@@ -84,7 +84,7 @@ body#spotter {
 }
 
 .appstore-container > div > .app-container > div {
-  
+
 }
 
 .appstore-container > div > .app-container > a.sign-up-for-beta {
@@ -228,11 +228,10 @@ body#spotter {
   padding: 20px 100px;
   margin: 30px auto 0 auto;
   cursor: pointer;
-  /* vertical-align: baseline; */
 }
 
 .action-button:hover, .action-button:active {
-  color: #FFF;
+  background-color: #E0304E;
 }
 
 .file-button-container {
@@ -260,6 +259,7 @@ body#spotter {
   position: absolute;
   right: 0;
   top: 0;
+  z-index: -1;
 }
 
 .file-wrapper .button {
@@ -563,7 +563,7 @@ body#spotter #mc_embed_signup .button:hover {
 
 
 body#spotter .header .links form {
-  
+
 }
 
 body#spotter .header .links form input[type="email"] {
@@ -789,11 +789,11 @@ p.small-text {
 }
 
 .spotter-image-gallery .pager-first {
-  
+
 }
 
 .spotter-image-gallery .pager-last {
-  
+
 }
 
 .spotter-image-gallery .pager-numbers {
