@@ -397,25 +397,17 @@ function bufferFromTagDict(tagDict, useWebGL, transpose) {
     // would take about 3 seconds to classify
 
       var texels1,
-          M, N;
+          M = dims._dims[0], N = dims._dims[1];
 
-        if(transpose){
-            M = dims._dims[0];
-            N = dims._dims[1];
-            texels1 = weblas.util.transpose(M, N, new Float32Array(buffer._quantizedData));
-        } else {
-            M = dims._dims[1];
-            N = dims._dims[0];
-            texels1 = new Float32Array(buffer._quantizedData);
-        }
+        texels1 = new Float32Array(buffer._quantizedData);
 
-        var tB = new weblas.pipeline.Tensor([N, M], texels1);
+        var tB = new weblas.pipeline.Tensor([M, N], texels1);
 
         var tOut = weblas.pipeline.sscal(buffer._spread, buffer._min, tB);
         tB.delete();
 
       if(transpose){
-          buffer._Ttensor = tOut;
+          buffer._Ttensor = tOut.transpose();
       } else {
           buffer._tensor = tOut;
       }
