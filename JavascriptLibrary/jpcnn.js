@@ -114,6 +114,8 @@ Buffer = function(dims, data, options) {
     }
   }
   this._name = 'None';
+  this._tensor = null;
+  this._Ttensor = null;
 };
 window['Buffer'] = Buffer;
 Buffer.prototype.canReshapeTo = function(newDims) {
@@ -347,12 +349,12 @@ Buffer.prototype.viewAtTopIndex = function(index) {
   var output = new Buffer(outputDims, viewData);
   return output;
 };
-// extract weblas data from _texture and place it in _data
-Buffer.prototype.extractDataFromTexture = function(){
+// get weblas data from GPU memory (not cheap)
+Buffer.prototype.getTensorData = function(){
 
     var result = this._tensor.transfer();
 
-    delete this._tensor;
+    this._tensor = null;
 
     return result;
 };
@@ -824,7 +826,7 @@ window['ConvNode'] = ConvNode;
 ConvNode.prototype.run = function(input) {
 
     if(input._tensor && input._data === null){
-        input._data = input.extractDataFromTexture();
+        input._data = input.getTensorData();
     }
 
   var inputDims = input._dims;
@@ -843,7 +845,7 @@ ConvNode.prototype.run = function(input) {
   this._output = matrixCorrelate(inputWithMargin, this._kernels, this._kernelWidth, this._kernelCount, this._sampleStride, this._bias);
   this._output.setName(this._name);
 
-  if(this._output._tensor === void(0)){
+  if(this._output._tensor === null){
       matrixAddInplace(this._output, this._bias, 1.0);
   }
 
@@ -912,7 +914,7 @@ window['GConvNode'] = GConvNode;
 GConvNode.prototype.run = function(input) {
 
     if(input._tensor && input._data === null){
-        input._data = input.extractDataFromTexture();
+        input._data = input.getTensorData();
     }
   var inputDims = input._dims;
 
@@ -976,9 +978,10 @@ NeuronNode.prototype.run = function(input) {
   var elementCount = inputImageDims.elementCount();
   var flattenedDimensions = new Dimensions(numberOfImages, elementCount);
   var flattenedInput;
+  var dimsNotEqual = (input._tensor && numberOfImages !== input._tensor.shape[0] && elementCount !== input._tensor.shape[1]);
 
-    if(input._tensor && input._data === null && !flattenedDimensions.areEqualTo(new Dimensions(input._tensor.shape))){
-        input._data = input.extractDataFromTexture();
+    if(input._tensor && input._data === null && dimsNotEqual){
+        input._data = input.getTensorData();
         var flattenedInput = input.view();
     } else {
         flattenedInput = input;
@@ -994,7 +997,7 @@ NeuronNode.prototype.run = function(input) {
   this._output = matrixDot(flattenedInput, this._weights, this._bias, this._dropout);
   this._output.setName(this._name);
 
-  if(this._output._tensor === void(0)){
+  if(this._output._tensor === null){
     matrixAddInplace(this._output, this._bias, 1.0);
 
 
@@ -1023,7 +1026,7 @@ window['NormalizeNode'] = NormalizeNode;
 NormalizeNode.prototype.run = function(input) {
 
     if(input._tensor && input._data === null){
-        input._data = input.extractDataFromTexture();
+        input._data = input.getTensorData();
     }
 
   this._output = matrixLocalResponse(input, this._windowSize, this._k, this._alpha, this._beta);
@@ -1045,7 +1048,7 @@ function PoolNode(tag) {
 window['PoolNode'] = PoolNode;
 PoolNode.prototype.run = function(input) {
     if(input._tensor && input._data === null){
-        input._data = input.extractDataFromTexture();
+        input._data = input.getTensorData();
     }
   this._output = matrixMaxPatch(input, this._patchWidth, this._stride);
   return this._output;
@@ -1075,7 +1078,7 @@ window['MaxNode'] = MaxNode;
 MaxNode.prototype.run = function(input) {
 
     if(input._tensor && input._data === null){
-        input._data = input.extractDataFromTexture();
+        input._data = input.getTensorData();
     }
 
   this._output = matrixSoftmax(input);
@@ -1460,9 +1463,9 @@ function matrixCorrelate(input, kernels, kernelWidth, kernelCount, stride, bias)
   }
   output.reshape(outputDims);
 
-  if(patches._tensor !== void(0)){
+  if(patches._tensor){
       patches._tensor.delete();
-      delete patches._tensor;
+      patches._tensor = null;
   }
 
   return output;
@@ -1620,7 +1623,7 @@ function sgemm(M, N, K, alpha, A, B, beta, C){
     // create input textures from data
 
     // cached texture for A?
-    if(A._tensor === void(0)){
+    if(A._tensor === null){
         // nope, create and cache it
 
         if (A._bitsPerFloat === 32) {
@@ -1637,7 +1640,7 @@ function sgemm(M, N, K, alpha, A, B, beta, C){
     }
 
     // cached texture for transpose of B?
-    if(B._Ttensor === void(0)){
+    if(B._Ttensor === null){
         // nope, create and cache it
 
         if (B._bitsPerFloat === 32) {
@@ -1656,7 +1659,7 @@ function sgemm(M, N, K, alpha, A, B, beta, C){
     }
 
     // cached texture for transpose C?
-    if(C._tensor === void(0)){
+    if(C._tensor === null){
         C._tensor = new weblas.pipeline.Tensor([1, N], C._data);
     }
 
@@ -1757,7 +1760,7 @@ function matrixJoinChannels(inputs) {
     console.assert(input._dims.areEqualTo(inputDims));
 
     if(input._tensor && input._data === null){
-        input._data = input.extractDataFromTexture();
+        input._data = input.getTensorData();
     }
 
     inputDatas.push({data: input._data, offset: 0});
@@ -1854,9 +1857,9 @@ function matrixDot(input, weights, bias, dropout) {
 
   }
 
-    if(input._tensor !== void(0)){
+    if(input._tensor){
         input._tensor.delete();
-        delete input._tensor;
+        input._tensor = null;
     }
   output.reshape(outputDims);
 
@@ -1968,7 +1971,7 @@ function matrixMaxPatch(input, patchWidth, stride) {
 
     var t3;
 
-    if(input._tensor === void(0)){
+    if(input._tensor === null){
       //console.log("creating texture for sdwns.");
       input._tensor = new weblas.pipeline.Tensor([M, N * channels], input._data);
     }
@@ -2042,7 +2045,7 @@ function matrixMax(input, maxValue) {
 
     var t3;
 
-    if(input._tensor === void(0)){
+    if(input._tensor === null){
         //console.log("creating texture for sclmp.");
 
         M = inputDims[1];
