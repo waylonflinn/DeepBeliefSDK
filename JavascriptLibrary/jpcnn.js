@@ -972,9 +972,9 @@ NeuronNode.prototype.run = function(input) {
   var flattenedInput;
   var dimsNotEqual = (input._tensor && numberOfImages !== input._tensor.shape[0] && elementCount !== input._tensor.shape[1]);
 
-    if(input._tensor && input._data === null && dimsNotEqual){
-        input._data = input.getTensorData();
-        var flattenedInput = input.view();
+    if(input._tensor && dimsNotEqual){
+        input._tensor = input._tensor.reshape(flattenedDimensions._dims);
+        flattenedInput = input;
     } else {
         flattenedInput = input;
     }
