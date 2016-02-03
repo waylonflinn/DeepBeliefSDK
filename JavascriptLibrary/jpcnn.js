@@ -1039,9 +1039,7 @@ function PoolNode(tag) {
 }
 window['PoolNode'] = PoolNode;
 PoolNode.prototype.run = function(input) {
-    if(input._tensor && input._data === null){
-        input._data = input.getTensorData();
-    }
+
   this._output = matrixMaxPatch(input, this._patchWidth, this._stride);
   return this._output;
 };
@@ -1966,7 +1964,9 @@ function matrixMaxPatch(input, patchWidth, stride) {
     if(input._tensor === null){
       //console.log("creating texture for sdwns.");
       input._tensor = new weblas.pipeline.Tensor([M, N * channels], input._data);
-    }
+  } else if(input._tensor.shape[0] !== M || input._tensor.shape[1] !== N * channels) {
+      input._tensor = input._tensor.reshape([M, N * channels]);
+  }
 
     t3 = weblas.pipeline.sdwns(channels, factor, stride, input._tensor);
 
@@ -1974,6 +1974,11 @@ function matrixMaxPatch(input, patchWidth, stride) {
 
   } else {
 
+/*
+  if(input._tensor && input._data === null){
+      input._data = input.getTensorData();
+  }
+  */
     outputData = naiveMaxPatch(input, patchWidth, stride);
 
     output._data = outputData;
