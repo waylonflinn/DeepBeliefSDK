@@ -1970,6 +1970,7 @@ function matrixMaxPatch(input, patchWidth, stride) {
 
     t3 = weblas.pipeline.sdwns(channels, factor, stride, input._tensor);
 
+    input._tensor.delete();
     output._tensor = t3;
 
   } else {
@@ -2059,6 +2060,7 @@ function matrixMax(input, maxValue) {
 
     t3 = weblas.pipeline.sclmp(maxValue, null, input._tensor);
 
+    input._tensor.delete();
     var output = new Buffer(inputDims, null);
     output._tensor = t3;
 
