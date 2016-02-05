@@ -1953,11 +1953,12 @@ function matrixMaxPatch(input, patchWidth, stride) {
     var M_out = Math.floor((M - factor) / stride) + 1;
 
     var outputDims = new Dimensions(imageCount, M_out , N_out, channels);
-    var output = new Buffer(outputDims, null);
+    var output;
 
     console.assert((imageCount === 1), 'Only handles the single-image case');
 
   if (g_useWebGL) {
+      output = new Buffer(outputDims, null);
 
     var t3;
 
@@ -1982,7 +1983,8 @@ function matrixMaxPatch(input, patchWidth, stride) {
   */
     outputData = naiveMaxPatch(input, patchWidth, stride);
 
-    output._data = outputData;
+    outputData.reshape(outputDims);
+    output = outputData;
 
 
   }
