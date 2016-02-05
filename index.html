@@ -90,8 +90,7 @@
     </div>
     <div id="weblas-state" class="action-button">
         <span class="weblas-state-desc">
-            <span id="weblas-state-prefix">Not Using</span>
-            <img class='button-image' src="weblas.png"/>
+            Using Javascript
         </span>
         <span class='webgl-toggle'>Enable</span>
     </div>
@@ -436,10 +435,10 @@ function setWebGLEnabled(state) {
   g_webGLEnabled = state;
   if (state) {
     $('.webgl-toggle').html('Disable');
-    $('#weblas-state-prefix').html('Using');
+    $('.weblas-state-desc').html('Using <img class="button-image" src="weblas.png"/>');
   } else {
-    $('.webgl-toggle').html('Enable');
-    $('#weblas-state-prefix').html('Not Using');
+    $('.webgl-toggle').html('Enable <img class="button-image" src="weblas.png"/>');
+    $('.weblas-state-desc').html('Using Javascript');
   }
 }
 
@@ -472,7 +471,7 @@ $(_.delay(function() {
     $('.load-image').on('click', function(event) {
         $('.file-wrapper input[type=file]').click();
     });
-    $('.webgl-toggle').on('click', function(event) {
+    $('#weblas-state').on('click', function(event) {
       toggleWebGL();
     });
     g_video = $('#live').get(0);
