@@ -108,7 +108,7 @@ body#spotter {
 .demo-container {
   position: relative;
   width: 960px;
-  height: 650px;
+  /*height: 650px;*/
   margin-left: auto;
   margin-right: auto;
   margin-top: 20px;
@@ -214,7 +214,7 @@ body#spotter {
 .action-section {
   width: 800px;
   /*height: 384px;*/
-  height: 245px;
+  /*height: 245px;*/
   margin: 0 auto;
 }
 
