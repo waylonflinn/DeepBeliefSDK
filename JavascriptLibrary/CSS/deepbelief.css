@@ -298,6 +298,10 @@ body#spotter {
   text-align: center;
 }
 
+.words-container {
+  width: 640px;
+}
+
 .faq-container {
   position: relative;
   width: 960px;
