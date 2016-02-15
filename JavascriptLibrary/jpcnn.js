@@ -1352,11 +1352,11 @@ function patchesIntoRows(input, kernelWidth, stride) {
         } else {
           var valuesToCopy;
           if (inputEndX > inputWidth) {
-            valuesToCopy = ((inputEndX - inputWidth) * inputChannels);
+              var valuesToZero = ((inputEndX - inputWidth) * inputChannels);
+            valuesToCopy = (valuesPerKernelRow - valuesToZero);
           } else {
             valuesToCopy = valuesPerKernelRow;
           }
-          var valuesToZero = (valuesPerKernelRow - valuesToCopy);
           var rowsToCopy;
           if (inputEndY > inputHeight) {
             rowsToCopy = (kernelWidth - (inputEndY - inputHeight));
