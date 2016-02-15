@@ -7,15 +7,29 @@
   <title>Deep Belief in Javascript</title>
   <script type="text/javascript" src="JavascriptLibrary/Utils/weblas.js"></script>
   <!--
-  Uncommenting the following line should allow you to pause in the debugger
+  This next stuff allows you to pause in the debugger
   (in Chrome) and export any TypedArray variable as a file using this syntax
   in the console:
 
+  dumpBuffer(buffer, "someName");
+
+  uses:
   download(typedArrayVariableName, "someName.arr", "application/octet-stream");
 
   Note: if paused in the debugger, you must resume execution for download to start.
   -->
   <script type="text/javascript" src="JavascriptLibrary/Utils/download2.js"></script>
+  <script>
+    function dumpBuffer(buffer, name){
+        download(buffer._data, name + ".arr", "application/octet-stream");
+        var meta = {
+            "shape" : buffer._dims._dims,
+            "type" : "float32"
+        }
+        download(JSON.stringify(meta), name + ".meta", "application/text");
+    }
+
+  </script>
   <link rel="stylesheet" type="text/css" href="JavascriptLibrary/CSS/bootstrap-2.3.1.min.css" />
   <link rel="stylesheet" type="text/css" href="JavascriptLibrary/CSS/bootstrap-responsive-2.3.1.min.css" />
   <link rel="stylesheet" type="text/css" href="JavascriptLibrary/CSS/flat-ui.css" />
