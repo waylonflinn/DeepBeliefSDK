@@ -1887,7 +1887,7 @@ function matrixDot(input, weights, bias, dropout) {
 
   var scale;
 
-  if (dropout > 0.0) {
+  if (!g_dk && dropout > 0.0) {
     scale = (1.0 - dropout);
   } else {
     scale = 1.0;

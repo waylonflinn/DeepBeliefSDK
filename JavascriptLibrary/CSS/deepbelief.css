@@ -134,7 +134,7 @@ body#spotter {
   position: absolute;
   left: 0px;
   top: 0px;
-  height: 495px;
+  height: 595px;
   width: 100%;
   background-color: rgba(245, 249, 250, 0.95);
 }
@@ -238,7 +238,7 @@ body#spotter {
   display: block;
   width: 365px;
   height: 90px;
-  float: left;
+  /*float: left;*/
   margin-right: 8px;
 }
 

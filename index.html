@@ -39,7 +39,7 @@
   <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/github-fork-ribbon-css/0.1.1/gh-fork-ribbon.min.css" />
 
 <style>
-#weblas-state{
+.action-button{
     /*background-color: rgb(42, 46, 234);*/
     color: #FFF;
     width: 250px;
@@ -50,13 +50,13 @@
     /*background-color: rgb(42, 46, 234);
     color: #B1B1B1;*/
 }
-.webgl-toggle{
+.toggle{
     display: none;
 }
-#weblas-state:hover > .webgl-toggle{
+.action-button:hover > .toggle{
     display:inline;
 }
-#weblas-state:hover > .weblas-state-desc{
+.action-button:hover > .state-desc{
     display: none;
 }
 .sub{
@@ -113,18 +113,24 @@
   </div>
 
   <div class="action-section">
-    <div class="file-button-container">
-      <span class="file-wrapper">
-        <input type="file" name="photo" id="photo" />
-        <span class="action-button load-image">Choose a Photo</span>
-      </span>
+    <div id="dk-state" class="action-button">
+        <span class="state-desc">
+            Dunning-Kruger Enabled
+        </span>
+        <span class='toggle'>Disable</span>
     </div>
     <div id="weblas-state" class="action-button">
-        <span class="weblas-state-desc">
+        <span class="state-desc">
             Using Javascript
         </span>
-        <span class='webgl-toggle'>Enable</span>
+        <span class='toggle'>Enable</span>
     </div>
+      <div class="file-button-container">
+        <span class="file-wrapper">
+          <input type="file" name="photo" id="photo" />
+          <span class="action-button load-image">Choose a Photo</span>
+        </span>
+      </div>
 
     <div class='words-container'>
         <h2>What's this?</h2>
@@ -188,6 +194,7 @@
 var g_isWebcamOn = false;
 var g_wantDemo = true;
 var g_repeat = true;
+var g_dk = false;
 var g_network;
 var g_video;
 var g_demoPhotoUrls = [
@@ -249,6 +256,10 @@ function onNetworkLoad() {
 
 function toggleWebGL() {
   setWebGLEnabled(!g_webGLEnabled);
+}
+
+function toggleDK() {
+  setDKEnabled(!g_dk);
 }
 
 function startDemoClassification() {
@@ -485,11 +496,23 @@ function setWebGLEnabled(state) {
   }
   g_webGLEnabled = state;
   if (state) {
-    $('.webgl-toggle').html('Disable');
-    $('.weblas-state-desc').html('Using <img class="button-image" src="weblas.png"/>');
+    $('#weblas-state > .toggle').html('Disable');
+    $('#weblas-state > .state-desc').html('Using <img class="button-image" src="weblas.png"/>');
   } else {
-    $('.webgl-toggle').html('Enable <img class="button-image" src="weblas.png"/>');
-    $('.weblas-state-desc').html('Using Javascript');
+    $('#weblas-state > .toggle').html('Enable <img class="button-image" src="weblas.png"/>');
+    $('#weblas-state > .state-desc').html('Using Javascript');
+  }
+}
+
+function setDKEnabled(state) {
+
+  g_dk = state;
+  if (state) {
+    $('#dk-state > .toggle').html('More Reality!');
+    $('#dk-state > .state-desc').html('Dunning-Kruger Enabled');
+  } else {
+    $('#dk-state > .toggle').html('More Confidence!');
+    $('#dk-state > .state-desc').html('Dunning-Kruger Disabled');
   }
 }
 
@@ -516,6 +539,7 @@ function checkCompatibility() {
 }
 
 $(_.delay(function() {
+    setDKEnabled(g_dk);
   if (checkCompatibility()) {
     $('.file-wrapper input[type=file]').bind('change focus click', SITE.fileInputs);
 
@@ -524,6 +548,9 @@ $(_.delay(function() {
     });
     $('#weblas-state').on('click', function(event) {
       toggleWebGL();
+    });
+    $('#dk-state').on('click', function(event) {
+      toggleDK();
     });
     g_video = $('#live').get(0);
     var networkUrl = 'networks/jetpac_untransposed.ntwk'
