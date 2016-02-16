@@ -528,6 +528,13 @@ Network.prototype.classifyImage = function(input, doMultiSample, layerOffset, us
 
   var prepareInput = new PrepareInputNode(this._dataMean, !doMultiSample, doFlip, imageSize, rescaledSize, isMeanChanneled);
   var rescaledInput = prepareInput.run(input);
+  if(useWebGL){
+      var M = rescaledInput._dims._dims[1],
+          N = rescaledInput._dims._dims[2] * rescaledInput._dims._dims[3];
+
+      rescaledInput._tensor = new weblas.pipeline.Tensor([M, N], rescaledInput._data);
+  }
+
   var predictions = this.run(rescaledInput, layerOffset);
 
   var result = [];
@@ -817,9 +824,6 @@ function ConvNode(tag, useWebGL) {
 window['ConvNode'] = ConvNode;
 ConvNode.prototype.run = function(input) {
 
-    if(input._tensor && input._data === null){
-        input._data = input.getTensorData();
-    }
 
   var inputDims = input._dims;
   var inputChannels = inputDims._dims[inputDims._dims.length - 1];
@@ -827,14 +831,7 @@ ConvNode.prototype.run = function(input) {
   var expectedKernelsDims = new Dimensions(valuesPerKernel, this._kernelCount);
   console.assert(expectedKernelsDims.areEqualTo(this._kernels._dims));
 
-  var inputWithMargin;
-  if (this._marginSize == 0) {
-    inputWithMargin = input;
-  } else {
-    inputWithMargin = matrixInsertMargin(input, this._marginSize, this._marginSize);
-  }
-
-  this._output = matrixCorrelate(inputWithMargin, this._kernels, this._kernelWidth, this._kernelCount, this._sampleStride, this._bias);
+  this._output = matrixCorrelate(input, this._kernels, this._kernelWidth, this._kernelCount, this._sampleStride, this._bias, this._marginSize);
   this._output.setName(this._name);
 
   if(this._output._tensor === null){
@@ -905,9 +902,6 @@ function GConvNode(tag, useWebGL) {
 window['GConvNode'] = GConvNode;
 GConvNode.prototype.run = function(input) {
 
-    if(input._tensor && input._data === null){
-        input._data = input.getTensorData();
-    }
   var inputDims = input._dims;
 
   console.assert(inputDims._dims.length === 4);
@@ -923,18 +917,50 @@ GConvNode.prototype.run = function(input) {
   var subnodeInputDimensions = new Dimensions(imageCount, inputHeight, inputWidth, subnodeChannels);
   var subnodeOutputBuffers = [];
 
-  for (var index = 0; index < this._subnodes.length; index += 1) {
-    var startChannel = (index * subnodeChannels);
-    var endChannel = ((index + 1) * subnodeChannels);
-    var subnodeInputBuffer = matrixExtractChannels(input, startChannel, endChannel);
+  if(this._subnodes.length == 2 && input._tensor){
+      // fast weblas version for group size of 2
 
-    var subnode = this._subnodes[index];
-    var subnodeOutputBuffer = subnode.run(subnodeInputBuffer);
-    subnodeOutputBuffers.push(subnodeOutputBuffer);
+      var submatrices = input._tensor.split(subnodeChannels);
+      var outputs = [null, null];
+      var input;
+
+      var subnode = this._subnodes[0];
+      input = new Buffer(subnodeInputDimensions, null);
+      input._tensor = submatrices[0];
+      outputs[0] = subnode.run(input);
+
+      subnodeInputDimensions = new Dimensions(imageCount, inputHeight, inputWidth, subnodeChannels);
+      var subnode = this._subnodes[1];
+      input = new Buffer(subnodeInputDimensions, null);
+      input._tensor = submatrices[1];
+      outputs[1] = subnode.run(input);
+
+      var subnodeOutputDims = outputs[0]._dims;
+      var subnodeOutputChannels = subnodeOutputDims._dims[subnodeOutputDims._dims.length - 1];
+      var outputChannels = (subnodeOutputChannels * 2);
+
+      var outputDims = new Dimensions(subnodeOutputDims._dims);
+      outputDims._dims[outputDims._dims.length - 1] = outputChannels;
+
+      this._output = new Buffer(outputDims, null);
+
+      this._output._tensor = weblas.pipeline.Tensor.combine(outputs[0]._tensor, outputs[1]._tensor, subnodeOutputChannels);
+
+  } else {
+
+      for (var index = 0; index < this._subnodes.length; index += 1) {
+        var startChannel = (index * subnodeChannels);
+        var endChannel = ((index + 1) * subnodeChannels);
+        var subnodeInputBuffer = matrixExtractChannels(input, startChannel, endChannel);
+
+        var subnode = this._subnodes[index];
+        var subnodeOutputBuffer = subnode.run(subnodeInputBuffer);
+        subnodeOutputBuffers.push(subnodeOutputBuffer);
+      }
+
+      this._output = matrixJoinChannels(subnodeOutputBuffers);
+
   }
-
-  this._output = matrixJoinChannels(subnodeOutputBuffers);
-
   return this._output;
 };
 
@@ -1017,11 +1043,23 @@ function NormalizeNode(tag) {
 window['NormalizeNode'] = NormalizeNode;
 NormalizeNode.prototype.run = function(input) {
 
+    var usingWeblas = false;
     if(input._tensor && input._data === null){
+        usingWeblas = true;
         input._data = input.getTensorData();
     }
 
   this._output = matrixLocalResponse(input, this._windowSize, this._k, this._alpha, this._beta);
+
+  if(usingWeblas){
+      // if the input had a tensor, we're using weblas, so create an output one
+      var M = this._output._dims._dims[1],
+          N = this._output._dims._dims[2],
+          channels = this._output._dims._dims[3];
+
+      this._output._tensor = new weblas.pipeline.Tensor([M, N * channels], this._output._data);
+  }
+
   return this._output;
 };
 
@@ -1381,31 +1419,78 @@ function patchesIntoRows(input, kernelWidth, stride) {
   return output;
 }
 
-function matrixCorrelate(input, kernels, kernelWidth, kernelCount, stride, bias) {
+function matrixCorrelate(input, kernels, kernelWidth, kernelCount, stride, bias, marginSize) {
 
   //console.log("Correlate");
 
-  var inputDims = input._dims;
-  // We're expecting (# of images, height, width, # of channels)
-  console.assert(inputDims._dims.length == 4);
 
-  var imageCount = inputDims._dims[0];
-  var inputWidth = inputDims._dims[2];
-  var inputHeight = inputDims._dims[1];
-  var inputChannels = inputDims._dims[3];
+    var imageCount;
+    var inputWidth;
+    var inputHeight;
+    var inputChannels;
 
-  var pixelsPerKernel = (kernelWidth * kernelWidth);
-  var valuesPerKernel = (pixelsPerKernel * inputChannels);
-  var expectedKernelsDims = new Dimensions(valuesPerKernel, kernelCount);
-  console.assert(expectedKernelsDims.areEqualTo(kernels._dims));
+    var output;
 
-  var outputWidth = Math.round(Math.ceil((inputWidth - kernelWidth) / stride) + 1);
-  var outputHeight = Math.round(Math.ceil((inputHeight - kernelWidth) / stride) + 1);
-  var outputChannels = kernelCount;
-  var outputDims = new Dimensions(imageCount, outputHeight, outputWidth, outputChannels);
-  var output = new Buffer(outputDims);
+    if(input._tensor){
+      // run the weblas version
+      var inputDims = input._dims;
 
-  var patches = patchesIntoRows(input, kernelWidth, stride);
+      var channels = inputDims._dims[3],
+          factor = kernelWidth,
+          margin = marginSize;
+
+      var t0 = input._tensor;
+      // linearize into rows matching the kernels
+      t3 = weblas.pipeline.slokn(channels, factor, stride, margin, t0);
+      var patches = new Buffer(new Dimensions([1, t3.shape[0], t3.shape[1]]), null);
+      patches._tensor = t3;
+
+      imageCount = inputDims._dims[0];
+      inputWidth = inputDims._dims[2] + (2 * margin);
+      inputHeight = inputDims._dims[1] + (2 * margin);
+      inputChannels = channels;
+
+    } else {
+        // run the javascript version
+
+      var inputWithMargin;
+      if (marginSize == 0) {
+        inputWithMargin = input;
+      } else {
+        inputWithMargin = matrixInsertMargin(input, marginSize, marginSize);
+      }
+
+        var patches = patchesIntoRows(inputWithMargin, kernelWidth, stride);
+
+        var inputDims = inputWithMargin._dims;
+
+        // We're expecting (# of images, height, width, # of channels)
+        console.assert(inputDims._dims.length == 4);
+
+        var imageCount = inputDims._dims[0];
+        var inputWidth = inputDims._dims[2];
+        var inputHeight = inputDims._dims[1];
+        var inputChannels = inputDims._dims[3];
+
+    }
+
+    var pixelsPerKernel = (kernelWidth * kernelWidth);
+    var valuesPerKernel = (pixelsPerKernel * inputChannels);
+    var expectedKernelsDims = new Dimensions(valuesPerKernel, kernelCount);
+    console.assert(expectedKernelsDims.areEqualTo(kernels._dims));
+
+    var outputWidth = Math.round(Math.ceil((inputWidth - kernelWidth) / stride) + 1);
+    var outputHeight = Math.round(Math.ceil((inputHeight - kernelWidth) / stride) + 1);
+    var outputChannels = kernelCount;
+    var outputDims = new Dimensions(imageCount, outputHeight, outputWidth, outputChannels);
+
+    if(!input._tensor){
+        // javascript version expectes a zero'd output
+        output = new Buffer(outputDims);
+    }
+
+
+
 
   var m = kernelCount;
   var n = (patches._dims._dims[1] * patches._dims._dims[0]);
@@ -1452,6 +1537,13 @@ function matrixCorrelate(input, kernels, kernelWidth, kernelCount, stride, bias)
 
   }
   output.reshape(outputDims);
+  if(output._tensor){
+      var M = outputDims._dims[1],
+          N = outputDims._dims[2],
+          channels = outputDims._dims[3];
+
+      output._tensor = output._tensor.reshape([M, N * channels]);
+  }
 
   if(patches._tensor){
       patches._tensor.delete();
