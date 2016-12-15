@@ -21,9 +21,42 @@
   <script type="text/javascript" src="JavascriptLibrary/Utils/download2.js"></script>
   <script>
     function dumpBuffer(buffer, name){
-        download(buffer._data, name + ".arr", "application/octet-stream");
+        var raw, shape;
+
+        if (buffer._bitsPerFloat === 32) {
+            if(buffer._data){
+                raw = buffer._data;
+                shape = buffer._dims._dims;
+            } else if(buffer._tensor){
+                raw = buffer._tensor.transfer(true);
+                shape = buffer._tensor.shape;
+            } else if(buffer._Ttensor){
+                var T = buffer._Ttensor.transpose(true);
+                shape = T.shape;
+                raw = T.transfer();
+            } else {
+                console.error("No data found.");
+            }
+        } else if(buffer._quantizedData){
+
+            // create new tensor from the data
+            texels0 = new Float32Array(buffer._quantizedData);
+            var t = new weblas.pipeline.Tensor([M, K], texels0);
+
+            // scale the tensor with the normalization values
+            var T  = weblas.pipeline.sscal(buffer._spread, buffer._min, t);
+            t.delete();
+
+            // get the raw data and shape from the new Tensor
+            shape = T.shape;
+            raw = T.transfer();
+        } else {
+            console.error("No data found.");
+        }
+
+        download(raw, name + ".arr", "application/octet-stream");
         var meta = {
-            "shape" : buffer._dims._dims,
+            "shape" : shape,
             "type" : "float32"
         }
         download(JSON.stringify(meta), name + ".meta", "application/text");
