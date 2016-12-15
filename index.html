@@ -23,20 +23,16 @@
     function dumpBuffer(buffer, name){
         var raw, shape;
 
-        if (buffer._bitsPerFloat === 32) {
-            if(buffer._data){
-                raw = buffer._data;
-                shape = buffer._dims._dims;
-            } else if(buffer._tensor){
-                raw = buffer._tensor.transfer(true);
-                shape = buffer._tensor.shape;
-            } else if(buffer._Ttensor){
-                var T = buffer._Ttensor.transpose(true);
-                shape = T.shape;
-                raw = T.transfer();
-            } else {
-                console.error("No data found.");
-            }
+        if(buffer._data){
+            raw = buffer._data;
+            shape = buffer._dims._dims;
+        } else if(buffer._tensor){
+            raw = buffer._tensor.transfer(true);
+            shape = buffer._tensor.shape;
+        } else if(buffer._Ttensor){
+            var T = buffer._Ttensor.transpose(true);
+            shape = T.shape;
+            raw = T.transfer();
         } else if(buffer._quantizedData){
 
             shape = buffer._dims._dims;
