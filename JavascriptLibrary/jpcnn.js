@@ -1015,6 +1015,11 @@ NeuronNode.prototype.run = function(input) {
   this._output = matrixDot(flattenedInput, this._weights, this._bias, this._dropout);
   this._output.setName(this._name);
 
+  dumpBuffer(this._weights, "w");
+  dumpBuffer(this._bias, "b");
+  dumpBuffer(flattenedInput, "in");
+  dumpBuffer(this._output, "out");
+
   if(this._output._tensor === null){
     matrixAddInplace(this._output, this._bias, 1.0);
 

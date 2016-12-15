@@ -42,11 +42,11 @@
 
             // scale the tensor with the normalization values
             var T  = weblas.pipeline.sscal(buffer._spread, buffer._min, t);
-            t.delete();
 
             // get the raw data and shape from the new Tensor
             //shape = T.shape;
             raw = T.transfer();
+            t.delete();
         } else {
             console.error("No data found.");
         }
