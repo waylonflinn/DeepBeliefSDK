@@ -39,16 +39,17 @@
             }
         } else if(buffer._quantizedData){
 
+            shape = buffer._dims._dims;
             // create new tensor from the data
             texels0 = new Float32Array(buffer._quantizedData);
-            var t = new weblas.pipeline.Tensor([M, K], texels0);
+            var t = new weblas.pipeline.Tensor(shape, texels0);
 
             // scale the tensor with the normalization values
             var T  = weblas.pipeline.sscal(buffer._spread, buffer._min, t);
             t.delete();
 
             // get the raw data and shape from the new Tensor
-            shape = T.shape;
+            //shape = T.shape;
             raw = T.transfer();
         } else {
             console.error("No data found.");
