@@ -27,7 +27,7 @@
             raw = buffer._tensor.transfer(true);
             shape = buffer._tensor.shape;
         } else if(buffer._Ttensor){
-            var T = buffer._Ttensor.transpose(true);
+            var T = buffer._Ttensor;//.transpose(true);
             shape = T.shape;
             raw = T.transfer();
         } else if(buffer._data){
