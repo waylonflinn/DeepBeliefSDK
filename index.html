@@ -29,7 +29,7 @@
         } else if(buffer._Ttensor){
             var T = buffer._Ttensor;//.transpose(true);
             shape = T.shape;
-            raw = T.transfer();
+            raw = T.transfer(true);
         } else if(buffer._data){
             raw = buffer._data;
             shape = buffer._dims._dims;
