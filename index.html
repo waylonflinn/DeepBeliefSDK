@@ -24,16 +24,20 @@
         var raw, shape;
 
         if(buffer._tensor){
+            console.log("dumping _tensor");
             raw = buffer._tensor.transfer(true);
             shape = buffer._tensor.shape;
         } else if(buffer._Ttensor){
+            console.log("dumping _Ttensor");
             var T = buffer._Ttensor;//.transpose(true);
             shape = T.shape;
             raw = T.transfer(true);
         } else if(buffer._data){
+            console.log("dumping _data");
             raw = buffer._data;
             shape = buffer._dims._dims;
         } else if(buffer._quantizedData){
+            console.log("dumping _quantizedData");
 
             shape = buffer._dims._dims;
             // create new tensor from the data
