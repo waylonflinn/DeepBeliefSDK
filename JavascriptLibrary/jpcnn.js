@@ -1756,6 +1756,7 @@ function sgemm(M, N, K, alpha, A, B, beta, C){
     t1 = B._Ttensor;
     t2 = C._tensor;
 
+    /*
     var s0, s1, s2; // shape
     var d0, d1, d2; // data
 
@@ -1770,7 +1771,7 @@ function sgemm(M, N, K, alpha, A, B, beta, C){
     t0 = new weblas.pipeline.Tensor(s0, d0);
     t1 = new weblas.pipeline.Tensor(s1, d1);
     t2 = new weblas.pipeline.Tensor(s2, d2);
-
+*/
     //console.log(M, N, K, alpha, beta);
     var t3 = weblas.pipeline.sgemm(alpha, t0, t1, beta, t2);
 
