@@ -1762,9 +1762,9 @@ function sgemm(M, N, K, alpha, A, B, beta, C){
     s0 = t0.shape.slice(0);
     s1 = t1.shape.slice(0);
     s2 = t2.shape.slice(0);
-    d0 = t0.transfer();
-    d1 = t1.transfer();
-    d2 = t2.transfer();
+    d0 = t0.transfer(true);
+    d1 = t1.transfer(true);
+    d2 = t2.transfer(true);
 
     // transfer and reload
     t0 = new weblas.pipeline.Tensor(s0, d0);
