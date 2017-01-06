@@ -837,7 +837,7 @@ ConvNode.prototype.run = function(input) {
   if(input._tensor && this._kernels._Ttensor && this._bias._tensor){
       s0 = input._tensor.shape.slice(0);
       s1 = this._kernels._Ttensor.shape.slice(0);
-      s3 = this._bias._tensor.shape.slice(0);
+      s2 = this._bias._tensor.shape.slice(0);
       d0 = input._tensor.transfer();
       d1 = this._kernels._Ttensor.transfer();
       d2 = this._bias._tensor.transfer();
