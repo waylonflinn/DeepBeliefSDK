@@ -834,17 +834,17 @@ ConvNode.prototype.run = function(input) {
   var s0, s1, s2; // shape
   var d0, d1, d2; // data
 
-  if(input._tensor && this._kernels._tTensor && this._bias._tensor){
+  if(input._tensor && this._kernels._Ttensor && this._bias._tensor){
       s0 = input._tensor.shape.slice(0);
-      s1 = this._kernels._tTensor.shape.slice(0);
+      s1 = this._kernels._Ttensor.shape.slice(0);
       s3 = this._bias._tensor.shape.slice(0);
       d0 = input._tensor.transfer();
-      d1 = this._kernels._tTensor.transfer();
+      d1 = this._kernels._Ttensor.transfer();
       d2 = this._bias._tensor.transfer();
 
       // transfer and reload
       input._tensor = new weblas.pipeline.Tensor(s0, d0);
-      this._kernels._tTensor = new weblas.pipeline.Tensor(s1, d1);
+      this._kernels._Ttensor = new weblas.pipeline.Tensor(s1, d1);
       this._bias._tensor = new weblas.pipeline.Tensor(s2, d2);
   }
 
