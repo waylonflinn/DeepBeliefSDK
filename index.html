@@ -42,7 +42,7 @@
 
             shape = buffer._dims._dims;
             // create new tensor from the data
-            for(var i = 0; i < buffer._quantizedData; i++){
+            for(var i = 0; i < buffer._quantizedData.length; i++){
                 raw[i] = (buffer._quantizedData[i] * buffer._spread) + buffer._min;
             }
         } else {
