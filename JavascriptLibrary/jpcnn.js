@@ -834,17 +834,19 @@ ConvNode.prototype.run = function(input) {
   var s0, s1, s2; // shape
   var d0, d1, d2; // data
 
-  s0 = input._tensor.shape.slice(0);
-  s1 = this._kernels._tTensor.shape.slice(0);
-  s3 = this._bias._tensor.shape.slice(0);
-  d0 = input._tensor.transfer();
-  d1 = this._kernels._tTensor.transfer();
-  d2 = this._bias._tensor.transfer();
+  if(input._tensor && this._kernels._tTensor && this._bias._tensor){
+      s0 = input._tensor.shape.slice(0);
+      s1 = this._kernels._tTensor.shape.slice(0);
+      s3 = this._bias._tensor.shape.slice(0);
+      d0 = input._tensor.transfer();
+      d1 = this._kernels._tTensor.transfer();
+      d2 = this._bias._tensor.transfer();
 
-  // transfer and reload
-  input._tensor = new weblas.pipeline.Tensor(s0, d0);
-  this._kernels._tTensor = new weblas.pipeline.Tensor(s1, d1);
-  this._bias._tensor = new weblas.pipeline.Tensor(s2, d2);
+      // transfer and reload
+      input._tensor = new weblas.pipeline.Tensor(s0, d0);
+      this._kernels._tTensor = new weblas.pipeline.Tensor(s1, d1);
+      this._bias._tensor = new weblas.pipeline.Tensor(s2, d2);
+  }
 
   this._output = matrixCorrelate(input, this._kernels, this._kernelWidth, this._kernelCount, this._sampleStride, this._bias, this._marginSize);
   this._output.setName(this._name);
