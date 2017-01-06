@@ -831,6 +831,21 @@ ConvNode.prototype.run = function(input) {
   var expectedKernelsDims = new Dimensions(valuesPerKernel, this._kernelCount);
   console.assert(expectedKernelsDims.areEqualTo(this._kernels._dims));
 
+  var s0, s1, s2; // shape
+  var d0, d1, d2; // data
+
+  s0 = input._tensor.shape.slice(0);
+  s1 = this._kernels._tTensor.shape.slice(0);
+  s3 = this._bias._tensor.shape.slice(0);
+  d0 = input._tensor.transfer();
+  d1 = this._kernels._tTensor.transfer();
+  d2 = this._bias._tensor.transfer();
+
+  // transfer and reload
+  input._tensor = new weblas.pipeline.Tensor(s0, d0);
+  this._kernels._tTensor = new weblas.pipeline.Tensor(s1, d1);
+  this._bias._tensor = new weblas.pipeline.Tensor(s2, d2);
+
   this._output = matrixCorrelate(input, this._kernels, this._kernelWidth, this._kernelCount, this._sampleStride, this._bias, this._marginSize);
   this._output.setName(this._name);
 
@@ -1756,7 +1771,7 @@ function sgemm(M, N, K, alpha, A, B, beta, C){
     t1 = B._Ttensor;
     t2 = C._tensor;
 
-
+/*
     var s0, s1, s2; // shape
     var d0, d1, d2; // data
 
@@ -1775,6 +1790,7 @@ function sgemm(M, N, K, alpha, A, B, beta, C){
     A._tensor = t0;
     B._Ttensor = t1;
     C._tensor = t2;
+    */
     //console.log(M, N, K, alpha, beta);
     var t3 = weblas.pipeline.sgemm(alpha, t0, t1, beta, t2);
 
