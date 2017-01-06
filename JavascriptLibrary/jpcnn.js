@@ -1755,14 +1755,18 @@ function sgemm(M, N, K, alpha, A, B, beta, C){
     t0 = A._tensor;
     t1 = B._Ttensor;
     t2 = C._tensor;
-    a = t0.transfer();
-    b = t1.transfer();
-    c = t2.transfer();
+
+    s0 = t0.shape.slice(0);
+    s1 = t1.shape.slice(0);
+    s2 = t2.shape.slice(0);
+    d0 = t0.transfer();
+    d1 = t1.transfer();
+    d2 = t2.transfer();
 
     // transfer and reload
-    t0 = new weblas.pipeline.Tensor(t0.shape, a);
-    t1 = new weblas.pipeline.Tensor(t1.shape, b);
-    t2 = new weblas.pipeline.Tensor(t2.shape, c);
+    t0 = new weblas.pipeline.Tensor(s0, d0);
+    t1 = new weblas.pipeline.Tensor(s1, d1);
+    t2 = new weblas.pipeline.Tensor(s2, d2);
 
     //console.log(M, N, K, alpha, beta);
     var t3 = weblas.pipeline.sgemm(alpha, t0, t1, beta, t2);
