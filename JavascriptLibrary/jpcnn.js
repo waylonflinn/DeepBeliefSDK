@@ -831,6 +831,7 @@ ConvNode.prototype.run = function(input) {
   var expectedKernelsDims = new Dimensions(valuesPerKernel, this._kernelCount);
   console.assert(expectedKernelsDims.areEqualTo(this._kernels._dims));
 
+  /*
   var s0, s1, s2; // shape
   var d0, d1, d2; // data
 
@@ -847,6 +848,7 @@ ConvNode.prototype.run = function(input) {
       this._kernels._Ttensor = new weblas.pipeline.Tensor(s1, d1);
       this._bias._tensor = new weblas.pipeline.Tensor(s2, d2);
   }
+  */
 
   this._output = matrixCorrelate(input, this._kernels, this._kernelWidth, this._kernelCount, this._sampleStride, this._bias, this._marginSize);
   this._output.setName(this._name);
